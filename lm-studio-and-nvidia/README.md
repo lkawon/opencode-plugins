@@ -52,6 +52,11 @@ $env:GPU_STATS_TOKEN = "replace-this-token"
 .\run-opencode.cmd
 ```
 
+For a full automatic startup at Windows logon — LM Studio server on
+`0.0.0.0:1234`, model loading, and this telemetry server — see the
+"Auto-start on Windows" section in the
+[repository README](../README.md).
+
 ## Starting the server manually
 
 From the repository root, start only the server in the background with:
