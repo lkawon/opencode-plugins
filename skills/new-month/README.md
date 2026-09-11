@@ -43,12 +43,11 @@ cd opencode-plugins/skills/new-month
 sh ./install.sh
 ```
 
-`install.sh` creates a symlink
-`~/.config/opencode/skills/new-month -> <repo>/skills/new-month`
-(an existing directory is backed up first). Because it is a symlink,
-`git pull` updates the skill in place. If you prefer a copy instead,
-copy the folder into `~/.config/opencode/skills/new-month` and run
-`npm install --omit=dev` inside it.
+`install.sh` creates a self-contained copy in
+`~/.config/opencode/skills/new-month` and installs its dependencies there.
+An existing installation is backed up first. The installed skill keeps
+working if the repository is moved, changed or deleted. After updating the
+repository, run `sh ./install.sh` again to install the new version.
 
 ### Authenticating on a new machine (recommended path)
 
