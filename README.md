@@ -1,4 +1,4 @@
-# OpenCode sidebar plugins
+# OpenCode plugins and skills
 
 This repository contains two independent OpenCode sidebar plugins:
 
@@ -8,6 +8,10 @@ This repository contains two independent OpenCode sidebar plugins:
 Each directory contains its own source files, local OpenCode configuration,
 installation script, and documentation. Install both plugins to display both
 sections in the right sidebar.
+
+It also contains the [`new-month`](./skills/new-month) skill, which creates
+monthly tabs in a Google Sheets timesheet. Its installation, OAuth setup and
+usage are documented in [`skills/new-month/README.md`](./skills/new-month/README.md).
 
 ## Remote macOS installation
 

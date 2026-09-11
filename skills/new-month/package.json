@@ -1,0 +1,16 @@
+{
+  "name": "new-month-skill",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OpenCode skill: create a new month tab in a timesheet Google Spreadsheet.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "new-month": "sh ./run.sh"
+  },
+  "dependencies": {
+    "googleapis": "^173.0.0"
+  }
+}
