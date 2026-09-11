@@ -33,7 +33,7 @@ function Get-LmsCommand {
     # but this keeps manual runs working when PATH is not set up.
     $candidate = Join-Path $env:USERPROFILE ".lmstudio\bin\lms.exe"
     if (Test-Path -LiteralPath $candidate) {
-      $command = Get-Command -LiteralPath $candidate
+      $command = $candidate
     }
   }
   if (-not $command) {
@@ -44,8 +44,16 @@ function Get-LmsCommand {
 
 function Invoke-Lms {
   param([Parameter(Position = 0)][string[]]$LmsArgs)
-  $merged = & $LmsCommand $LmsArgs 2>&1 | ForEach-Object { "$_" }
-  $code = $LASTEXITCODE
+  # Windows PowerShell 5.1 turns redirected native stderr into error records.
+  # Keep those records as command output instead of terminating the boot script.
+  $previousErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $merged = & $LmsCommand $LmsArgs 2>&1 | ForEach-Object { "$_" }
+    $code = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
   return @{ Code = $code; Output = ($merged -join "`n") }
 }
 
@@ -73,8 +81,13 @@ function Get-LoadedModelKeys {
   }
   $keys = @()
   foreach ($item in @($data)) {
-    if ($item.PSObject.Properties.Name -contains "key" -and $item.key) {
-      $keys += $item.key
+    foreach ($property in @("modelKey", "identifier", "indexedModelIdentifier", "path")) {
+      if ($item.PSObject.Properties.Name -contains $property -and $item.$property) {
+        $keys += $item.$property
+      }
+    }
+    if ($item.PSObject.Properties.Name -contains "selectedVariant" -and $item.selectedVariant) {
+      $keys += $item.selectedVariant.Split("@", 2)[0]
     }
   }
   return $keys
@@ -95,6 +108,11 @@ function Test-TelemetryReady {
   }
 }
 
+trap {
+  Write-Log "ERROR: $($_.Exception.Message)"
+  exit 1
+}
+
 $LmsCommand = Get-LmsCommand
 Write-Log "LM Studio boot: host=$lmHost port=$lmPort model=$model"
 
@@ -113,11 +131,11 @@ while ((Get-Date) -lt $deadline -and (Test-LmStudioReady -BaseUrl "http://127.0.
 }
 
 # 2. Start the server on the requested host/port.
-$start = Invoke-Lms -LmsArgs @("server", "start", "--host", $lmHost, "--port", "$lmPort")
+$start = Invoke-Lms -LmsArgs @("server", "start", "--bind", $lmHost, "--port", "$lmPort")
 if ($start.Code -ne 0) {
   throw "lms server start failed (exit $($start.Code)): $($start.Output)"
 }
-Write-Log "LM Studio server starting on $lmHost:$lmPort ..."
+Write-Log "LM Studio server starting on ${lmHost}:$lmPort ..."
 
 # 3. Wait for the HTTP API to answer.
 $deadline = (Get-Date).AddSeconds(60)
@@ -129,7 +147,7 @@ while ((Get-Date) -lt $deadline) {
 if (-not $ready) {
   throw "LM Studio server did not become ready within 60s on 127.0.0.1:$lmPort"
 }
-Write-Log "LM Studio server is ready on $lmHost:$lmPort."
+Write-Log "LM Studio server is ready on ${lmHost}:$lmPort."
 
 # 4. Load the model unless it is already loaded.
 $loaded = @(Get-LoadedModelKeys)
@@ -137,7 +155,7 @@ if ($loaded -contains $model) {
   Write-Log "Model $model is already loaded."
 } else {
   Write-Log "Loading model $model (this may take a few minutes) ..."
-  $load = Invoke-Lms -LmsArgs @("load", $model)
+  $load = Invoke-Lms -LmsArgs @("load", $model, "--yes")
   if ($load.Code -ne 0) {
     throw "lms load failed (exit $($load.Code)): $($load.Output)"
   }

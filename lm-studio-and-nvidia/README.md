@@ -22,17 +22,11 @@ finishes, so `current` is not a live token-by-token measurement.
 
 ## Running on Windows
 
-After installing the plugins globally, the easiest way to start everything is
-to use the launcher from the repository root:
+Start the telemetry server from the repository root:
 
 ```cmd
-..\run-opencode.cmd
+..\start-lmstudio-server.cmd
 ```
-
-The script performs two operations:
-
-1. Starts `gpu_lmstudio_server.py` in the background using `pythonw.exe`.
-2. Starts OpenCode in the project directory.
 
 The server uses a single-instance lock. Running the script multiple times does
 not create additional servers on port `8765`.
@@ -44,12 +38,12 @@ GPU_STATS_URL=http://127.0.0.1:8765
 GPU_STATS_TOKEN=token123
 ```
 
-You can override them before starting the script:
+You can override them before starting OpenCode:
 
 ```powershell
 $env:GPU_STATS_URL = "http://127.0.0.1:8765"
 $env:GPU_STATS_TOKEN = "replace-this-token"
-.\run-opencode.cmd
+opencode
 ```
 
 For a full automatic startup at Windows logon — LM Studio server on
@@ -101,8 +95,8 @@ install-global.cmd
 The installer copies only the OpenCode plugin files into
 `%USERPROFILE%\.config\opencode` and preserves other TUI plugin entries,
 including `openai-status`. The Python telemetry server remains in this project
-directory and is started by the root `run-opencode.cmd`. Close and restart
-OpenCode after installation.
+directory and is started with the root `start-lmstudio-server.cmd`. Close and
+restart OpenCode after installation.
 
 On macOS or Linux, install only the client-side OpenCode files with:
 

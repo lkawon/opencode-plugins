@@ -13,7 +13,7 @@ from urllib.request import urlopen, Request
 HOST = os.environ.get("GPU_STATS_HOST", "0.0.0.0")
 PORT = int(os.environ.get("GPU_STATS_PORT", "8765"))
 LM_URL = os.environ.get("LMSTUDIO_URL", "http://127.0.0.1:1234").rstrip("/")
-TOKEN = os.environ.get("GPU_STATS_TOKEN", "")
+TOKEN = os.environ.get("GPU_STATS_TOKEN", "token123")
 LAST_PERFORMANCE = {"model": "", "tokens_per_second": None}
 MODEL_PERFORMANCE = {}
 LOADED_MODELS = []

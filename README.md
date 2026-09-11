@@ -37,18 +37,13 @@ Allow inbound TCP ports `8765` (telemetry) and `1234` (LM Studio API) through
 the Windows firewall only on a trusted LAN. The `openai-status` panel uses the
 OpenAI OAuth login stored locally by OpenCode on the Mac.
 
-After installing both plugins globally, start the telemetry server and OpenCode
-from the repository root with:
-
-```cmd
-run-opencode.cmd
-```
-
-To start only the Windows telemetry server without OpenCode, use:
+After installing both plugins globally, start the Windows telemetry server with:
 
 ```cmd
 start-lmstudio-server.cmd
 ```
+
+OpenCode can then be started normally with `opencode`.
 
 ## Auto-start on Windows (LM Studio + model + telemetry)
 
