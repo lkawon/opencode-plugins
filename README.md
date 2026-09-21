@@ -33,22 +33,68 @@ export GPU_STATS_TOKEN="token123"
 opencode
 ```
 
-Allow inbound TCP port `8765` through the Windows firewall only on a trusted
-LAN. The `openai-status` panel uses the OpenAI OAuth login stored locally by
-OpenCode on the Mac.
+Allow inbound TCP ports `8765` (telemetry) and `1234` (LM Studio API) through
+the Windows firewall only on a trusted LAN. The `openai-status` panel uses the
+OpenAI OAuth login stored locally by OpenCode on the Mac.
 
-After installing both plugins globally, start the telemetry server and OpenCode
-from the repository root with:
-
-```cmd
-run-opencode.cmd
-```
-
-To start only the Windows telemetry server without OpenCode, use:
+After installing both plugins globally, start the Windows telemetry server with:
 
 ```cmd
 start-lmstudio-server.cmd
 ```
+
+OpenCode can then be started normally with `opencode`.
+
+## Auto-start on Windows (LM Studio + model + telemetry)
+
+To bring up the whole GPU stack at Windows logon — LM Studio server bound to
+the LAN, the model loaded, and the telemetry server running — use:
+
+```cmd
+start-lmstudio-model.cmd
+```
+
+The script performs three steps:
+
+1. Restarts the LM Studio server on `LMSTUDIO_HOST:LMSTUDIO_PORT`
+   (defaults `0.0.0.0:1234`), so the LAN bind is guaranteed.
+2. Loads `LMSTUDIO_MODEL` (default `qwen/qwen3.8-27b`) unless it is already
+   loaded.
+3. Starts the telemetry server (single-instance, port `8765`) and waits for it
+   to become healthy.
+
+Override the defaults with environment variables before running it:
+
+```powershell
+$env:LMSTUDIO_HOST = "0.0.0.0"
+$env:LMSTUDIO_PORT = "1234"
+$env:LMSTUDIO_MODEL = "qwen/qwen3.8-27b"
+.\start-lmstudio-model.cmd
+```
+
+Each run appends to `logs\boot-lmstudio.log` in the repository root.
+
+To run the boot automatically at logon, register a hidden scheduled task with:
+
+```cmd
+install-startup.cmd
+```
+
+Optionally pass a different repository path:
+
+```cmd
+install-startup.cmd C:\path\to\opencode-plugins
+```
+
+To remove the scheduled task again:
+
+```cmd
+install-startup.cmd -Remove
+```
+
+The task is named `OpenCode-LMStudio-Boot`, runs for the current user at logon,
+and is re-runnable (it replaces an existing task). It starts hidden and writes
+to the same `logs\boot-lmstudio.log`.
 
 ## Synchronizing the LM Studio context
 

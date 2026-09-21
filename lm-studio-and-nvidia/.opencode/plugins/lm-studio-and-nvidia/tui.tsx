@@ -33,6 +33,7 @@ type ModelPerformance = {
 }
 
 const endpoint = () => (process.env.GPU_STATS_URL ?? "http://127.0.0.1:8765").replace(/\/$/, "")
+const token = () => process.env.GPU_STATS_TOKEN ?? "token123"
 
 const tui: TuiPlugin = async (api) => {
   const [stats, setStats] = createSignal<Stats>({})
@@ -40,7 +41,7 @@ const tui: TuiPlugin = async (api) => {
   const refresh = async () => {
     try {
       const headers: Record<string, string> = { Accept: "application/json" }
-      if (process.env.GPU_STATS_TOKEN) headers.Authorization = `Bearer ${process.env.GPU_STATS_TOKEN}`
+      headers.Authorization = `Bearer ${token()}`
       const response = await fetch(`${endpoint()}/stats`, { headers })
       if (response.ok) {
         setStats(await response.json() as Stats)
