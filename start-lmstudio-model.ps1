@@ -155,7 +155,7 @@ if ($loaded -contains $model) {
   Write-Log "Model $model is already loaded."
 } else {
   Write-Log "Loading model $model (this may take a few minutes) ..."
-  $load = Invoke-Lms -LmsArgs @("load", $model, "--yes")
+  $load = Invoke-Lms -LmsArgs @("load", $model, "--gpu", "max", "--yes")
   if ($load.Code -ne 0) {
     throw "lms load failed (exit $($load.Code)): $($load.Output)"
   }
