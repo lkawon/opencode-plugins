@@ -15,6 +15,7 @@ globalThis.fetch = async (url, options) => {
   assert.equal(options.headers["Content-Type"], "application/x-www-form-urlencoded")
   assert.match(options.body.toString(), /grant_type=refresh_token/)
   assert.match(options.body.toString(), /refresh_token=refresh_test_token/)
+  assert.match(options.body.toString(), /client_id=app_EMoamEEZ73f0CkXaXp7hrann/)
   return new Response(
     JSON.stringify({
       access_token: "new.access.token",

@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 
 const tokenUrl = "https://auth.openai.com/oauth/token"
+const clientID = "app_EMoamEEZ73f0CkXaXp7hrann"
 
 function authPath() {
   if (process.env.OPENCODE_AUTH_PATH) return process.env.OPENCODE_AUTH_PATH
@@ -31,6 +32,7 @@ async function refresh() {
     body: new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: auth.refresh,
+      client_id: clientID,
     }),
     signal: AbortSignal.timeout(15_000),
   })
