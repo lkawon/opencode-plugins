@@ -44,3 +44,25 @@ The plugin also exposes an `openai_status` tool for on-demand diagnostics.
 ## Refresh behavior
 
 Quota data is fetched once when the TUI starts and then every 60 seconds.
+
+## Token refresh
+
+If the status panel or tool reports `OpenAI OAuth token has expired`, refresh the
+access token without re-logging in:
+
+```sh
+node refresh-openai.mjs
+```
+
+The script exchanges the stored `refresh` token at `https://auth.openai.com/oauth/token`
+(the same endpoint OpenCode uses) and writes the new `access`, `refresh`, and
+`expires` values back to `~/.local/share/opencode/auth.json`. No browser or
+interactive login required. It needs Node 18+ (for `fetch`).
+
+If the refresh token itself is rejected, log in again:
+
+```sh
+opencode auth login --provider openai
+```
+
+Note: restart OpenCode after refreshing so it picks up the new token.

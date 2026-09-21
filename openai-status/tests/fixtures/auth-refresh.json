@@ -1,0 +1,9 @@
+{
+  "openai": {
+    "type": "oauth",
+    "access": "old.access.token",
+    "refresh": "refresh_test_token",
+    "expires": 0,
+    "accountId": "acct_test"
+  }
+}
