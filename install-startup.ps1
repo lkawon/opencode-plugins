@@ -4,7 +4,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$TaskName = "OpenCode-LMStudio-Boot"
+$TaskName = "OpenCode-LLamaCpp-Boot"
+$LegacyTaskName = "OpenCode-LMStudio-Boot"
 
 if (-not $RepoPath) { $RepoPath = $PSScriptRoot }
 
@@ -20,7 +21,7 @@ if ($Remove) {
 }
 
 $repoRoot = (Resolve-Path -LiteralPath $RepoPath).Path
-$bootScript = Join-Path $repoRoot "start-lmstudio-model.ps1"
+$bootScript = Join-Path $repoRoot "start-llamacpp.ps1"
 if (-not (Test-Path -LiteralPath $bootScript)) {
   throw "Boot script not found: $bootScript"
 }
@@ -28,13 +29,20 @@ if (-not (Test-Path -LiteralPath $bootScript)) {
 $user = "$env:USERDOMAIN\$env:USERNAME"
 $action = New-ScheduledTaskAction `
   -Execute "powershell.exe" `
-  -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$bootScript`""
+  -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$bootScript`" --mode all"
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
 $settings = New-ScheduledTaskSettingsSet `
   -AllowStartIfOnBatteries `
   -DontStopIfGoingOnBatteries `
   -StartWhenAvailable `
   -ExecutionTimeLimit (New-TimeSpan -Minutes 120)
+
+# Remove the legacy LM Studio boot task if present (migration cleanup).
+$legacy = Get-ScheduledTask -TaskName $LegacyTaskName -ErrorAction SilentlyContinue
+if ($legacy) {
+  Unregister-ScheduledTask -TaskName $LegacyTaskName -Confirm:$false
+  Write-Host "Removed legacy scheduled task: $LegacyTaskName"
+}
 
 # Re-run safe: replace any existing task.
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
@@ -51,4 +59,4 @@ Register-ScheduledTask `
 
 Write-Host "Scheduled task installed: $TaskName"
 Write-Host "Boot script: $bootScript"
-Write-Host "At logon it restarts the LM Studio server (0.0.0.0:1234), loads the model, and starts telemetry."
+Write-Host "At logon it starts llama-server (--mode all), waits for /health, then starts telemetry."
