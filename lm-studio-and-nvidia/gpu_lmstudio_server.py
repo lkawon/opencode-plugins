@@ -189,7 +189,7 @@ def _record_activity(model, event):
     }))
     prompt_progress = _number(_find_value(event, {
         "prompt_processing_progress", "promptProcessingProgress", "prompt_progress",
-        "promptProgress", "processing_progress", "processingProgress", "progress",
+        "promptProgress", "processing_progress", "processingProgress",
     }))
 
     if generated_tokens is None and prompt_processed is None and prompt_total is None and prompt_progress is None:
@@ -226,14 +226,11 @@ def _refresh_generating_activity(models):
         status = str(model.get("generation_status") or model.get("generationStatus") or model.get("status") or "").lower()
         if status == "generating":
             active.add(key)
-            state = MODEL_GENERATION.setdefault(key, {"started_at": now, "base_tokens": 0})
-            speed = MODEL_PERFORMANCE.get(key, {}).get("current_tokens_per_second")
-            if speed is None and LAST_PERFORMANCE.get("model") == key:
-                speed = LAST_PERFORMANCE.get("tokens_per_second")
+            if key not in MODEL_GENERATION:
+                MODEL_GENERATION[key] = {"started_at": now}
+                MODEL_ACTIVITY.setdefault(key, {}).pop("generated_tokens", None)
             activity = MODEL_ACTIVITY.setdefault(key, {})
             activity["updated_at"] = now
-            if speed:
-                activity["generated_tokens"] = int(state["base_tokens"] + max(0, now - state["started_at"]) * speed)
         else:
             MODEL_GENERATION.pop(key, None)
             if status == "processingprompt":

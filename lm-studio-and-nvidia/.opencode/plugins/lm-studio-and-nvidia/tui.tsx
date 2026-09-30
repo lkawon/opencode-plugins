@@ -180,12 +180,8 @@ function promptProgressLine(
   if (typeof progress !== "number" && typeof processed === "number" && typeof total === "number" && total > 0) {
     progress = processed / total
   }
-  if (typeof progress !== "number" && typeof processed !== "number") return ""
-  const percent = typeof progress === "number" ? `${Math.round((progress <= 1 ? progress * 100 : progress))}%` : "?%"
-  const tokens = typeof processed === "number"
-    ? ` (${processed}${typeof total === "number" ? `/${total}` : ""})`
-    : ""
-  return `${percent}${tokens}`
+  if (typeof progress !== "number") return ""
+  return `${Math.round((progress <= 1 ? progress * 100 : progress))}%`
 }
 
 function generatedTokensLine(
