@@ -2,7 +2,7 @@
 
 This repository contains two independent OpenCode sidebar plugins:
 
-- [`lm-studio-and-nvidia`](./lm-studio-and-nvidia) — NVIDIA GPU telemetry and loaded LM Studio model status.
+- [`llamacpp-and-nvidia`](./llamacpp-and-nvidia) — NVIDIA GPU telemetry and the loaded llama.cpp model.
 - [`openai-status`](./openai-status) — ChatGPT/Codex subscription quota and reset times.
 
 Each directory contains its own source files, local OpenCode configuration,
@@ -13,10 +13,26 @@ It also contains the [`new-month`](./skills/new-month) skill, which creates
 monthly tabs in a Google Sheets timesheet. Its installation, OAuth setup and
 usage are documented in [`skills/new-month/README.md`](./skills/new-month/README.md).
 
+## How the telemetry works
+
+The `llamacpp-and-nvidia` plugin reads a lightweight telemetry server running
+on the computer with the NVIDIA GPU. The server is a thin, read-only HTTP
+service that pulls data from llama.cpp's first-class endpoints — no `lms` CLI,
+no log scraping:
+
+- GPU VRAM, utilization, temperature and power from `nvml.dll` directly.
+- Model id, context length (`n_ctx`), quantization and size from llama.cpp `GET /v1/models`.
+- Per-slot processing state and prompt progress from llama.cpp `GET /slots`.
+- Tokens/s (current / max / average) sampled from llama.cpp `GET /metrics`.
+
+The telemetry server binds `127.0.0.1` by default and always requires a bearer
+token (fail closed). A token is generated once and persisted to
+`~/.config/opencode/llamacpp-stats.token` unless `GPU_STATS_TOKEN` is set.
+
 ## Remote macOS installation
 
-The NVIDIA/LM Studio telemetry server runs on the Windows GPU computer. On the
-Mac, clone this repository and install both client-side OpenCode panels with:
+The telemetry server runs on the Windows GPU computer. On the Mac, clone this
+repository and install both client-side OpenCode panels with:
 
 ```sh
 sh ./install-macos.sh
@@ -29,50 +45,44 @@ token before starting OpenCode:
 
 ```sh
 export GPU_STATS_URL="http://WINDOWS_IP:8765"
-export GPU_STATS_TOKEN="token123"
+export GPU_STATS_TOKEN="<token>"
 opencode
 ```
 
-Allow inbound TCP ports `8765` (telemetry) and `1234` (LM Studio API) through
-the Windows firewall only on a trusted LAN. The `openai-status` panel uses the
-OpenAI OAuth login stored locally by OpenCode on the Mac.
+Allow inbound TCP port `8765` (telemetry) through the Windows firewall only on
+a trusted LAN. The `openai-status` panel uses the OpenAI OAuth login stored
+locally by OpenCode on the Mac.
 
-After installing both plugins globally, start the Windows telemetry server with:
+After installing both plugins globally, start the Windows telemetry server with
+`start-llamacpp.cmd` (telemetry mode). OpenCode can then be started normally
+with `opencode`.
 
-```cmd
-start-lmstudio-server.cmd
-```
+## Auto-start on Windows (llama-server + telemetry)
 
-OpenCode can then be started normally with `opencode`.
-
-## Auto-start on Windows (LM Studio + model + telemetry)
-
-To bring up the whole GPU stack at Windows logon — LM Studio server bound to
-the LAN, the model loaded, and the telemetry server running — use:
+To bring up the whole stack at Windows logon, use the three-mode boot script:
 
 ```cmd
-start-lmstudio-model.cmd
+start-llamacpp.cmd --mode all
 ```
 
-The script performs three steps:
+Modes:
 
-1. Restarts the LM Studio server on `LMSTUDIO_HOST:LMSTUDIO_PORT`
-   (defaults `0.0.0.0:1234`), so the LAN bind is guaranteed.
-2. Loads `LMSTUDIO_MODEL` (default `qwen/qwen3.8-27b`) unless it is already
-   loaded.
-3. Starts the telemetry server (single-instance, port `8765`) and waits for it
-   to become healthy.
+- `--mode telemetry` (default) — start telemetry only; observe the already-running llama-server.
+- `--mode server` — start/restart llama-server standalone.
+- `--mode all` — start llama-server, wait for `/health`, then start telemetry.
 
-Override the defaults with environment variables before running it:
+Each run appends to `logs\boot-llamacpp.log` in the repository root.
+
+The script defaults to a typical llama.cpp launch. Override with environment
+variables before running it:
 
 ```powershell
-$env:LMSTUDIO_HOST = "0.0.0.0"
-$env:LMSTUDIO_PORT = "1234"
-$env:LMSTUDIO_MODEL = "qwen/qwen3.8-27b"
-.\start-lmstudio-model.cmd
+$env:LLAMA_GGUF  = "e:\path\to\model.gguf"
+$env:LLAMA_ALIAS = "qwen3.8-27b"
+$env:LLAMA_CTX   = "152576"
+$env:LLAMA_NGL   = "64"
+.\start-llamacpp.cmd --mode all
 ```
-
-Each run appends to `logs\boot-lmstudio.log` in the repository root.
 
 To run the boot automatically at logon, register a hidden scheduled task with:
 
@@ -92,30 +102,30 @@ To remove the scheduled task again:
 install-startup.cmd -Remove
 ```
 
-The task is named `OpenCode-LMStudio-Boot`, runs for the current user at logon,
-and is re-runnable (it replaces an existing task). It starts hidden and writes
-to the same `logs\boot-lmstudio.log`.
+The task is named `OpenCode-LLamaCpp-Boot`, runs for the current user at logon,
+and is re-runnable (it replaces an existing task and removes the legacy
+`OpenCode-LMStudio-Boot` task). It starts hidden and writes to the same
+`logs\boot-llamacpp.log`.
 
-## Synchronizing the LM Studio context
+## Synchronizing the llama.cpp context
 
-To copy the context length of every currently loaded LM Studio model into its
-matching OpenCode model configuration, run:
+To copy the loaded llama.cpp context length (`n_ctx`) into the matching OpenCode
+model configuration, run:
 
 ```cmd
-sync-lmstudio-context.cmd
+sync-llamacpp-context.cmd
 ```
 
-The command synchronizes these per-model limits:
+The command synchronizes these per-model limits under `provider.llamacpp.models`:
 
-- `limit.context` and `limit.input` — the context currently loaded in LM Studio.
+- `limit.context` and `limit.input` — the context loaded in llama.cpp (`n_ctx`).
 - `limit.output` — an 8192-token output reserve, causing automatic compaction to
   start at approximately `context - output` tokens.
 
-For example, a 45056-token LM Studio context will compact at approximately
-36864 tokens. Override the reserve when needed:
+Override the reserve when needed:
 
 ```cmd
-sync-lmstudio-context.cmd --output-reserve 4096
+sync-llamacpp-context.cmd --output-reserve 4096
 ```
 
 By default the command updates
@@ -125,13 +135,13 @@ settings unrelated to these three limits. Preview the change without writing
 anything:
 
 ```cmd
-sync-lmstudio-context.cmd --dry-run
+sync-llamacpp-context.cmd --dry-run
 ```
 
-On the remote Mac, synchronization can read the loaded model context through
-the Windows telemetry endpoint:
+On the remote Mac, synchronization can read the loaded model context through the
+Windows telemetry endpoint:
 
 ```sh
-GPU_STATS_URL="http://WINDOWS_IP:8765" GPU_STATS_TOKEN="token123" \
-  sh ./sync-lmstudio-context.sh --dry-run
+GPU_STATS_URL="http://WINDOWS_IP:8765" GPU_STATS_TOKEN="<token>" \
+  sh ./sync-llamacpp-context.sh --dry-run
 ```

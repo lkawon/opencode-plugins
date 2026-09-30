@@ -37,7 +37,7 @@ sh ./install-global.sh
 The installer requires `python3` and either `bun` or `npm`.
 
 Restart OpenCode after installation. The installer preserves existing TUI
-plugins, including `lm-studio-and-nvidia`.
+plugins, including `llamacpp-and-nvidia`.
 
 The plugin also exposes an `openai_status` tool for on-demand diagnostics.
 
