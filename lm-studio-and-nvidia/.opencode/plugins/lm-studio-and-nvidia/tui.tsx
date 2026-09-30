@@ -106,12 +106,11 @@ function ModelStatus(props: {
   loaded: unknown[] | undefined
 }) {
   const status = () => statusFor(props.model, props.loaded)
-  const prompt = () => status() === "processing prompt" ? promptProgressLine(props.model, props.performance) : ""
-  const generated = () => generatedTokensLine(props.model, props.performance, props.loaded)
+  const detail = () => status() === "processing prompt"
+    ? promptProgressLine(props.model, props.performance)
+    : generatedTokensLine(props.model, props.performance, props.loaded)
   return <>
-    <text fg="gray">Status {status()}</text>
-    {prompt() && <text fg="gray">{prompt()}</text>}
-    {generated() && <text fg="gray">{generated()}</text>}
+    <text fg="gray">Status {status()}{detail() ? ` (${detail()})` : ""}</text>
   </>
 }
 
@@ -186,7 +185,7 @@ function promptProgressLine(
   const tokens = typeof processed === "number"
     ? ` (${processed}${typeof total === "number" ? `/${total}` : ""})`
     : ""
-  return `Prompt ${percent}${tokens}`
+  return `${percent}${tokens}`
 }
 
 function generatedTokensLine(
@@ -197,7 +196,7 @@ function generatedTokensLine(
   if (statusFor(model, loaded) !== "generating") return ""
   const generated = activityFor(model, performance)?.generated_tokens
   if (typeof generated !== "number") return ""
-  return `Generated ${generated} tokens`
+  return `${generated}`
 }
 
 const plugin: TuiPluginModule & { id: string } = { id: "lm-studio-and-nvidia.sidebar", tui }

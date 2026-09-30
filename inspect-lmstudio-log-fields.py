@@ -11,6 +11,8 @@ import json
 import shutil
 import subprocess
 import sys
+import queue
+import threading
 import time
 
 
@@ -43,18 +45,27 @@ def main():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
     deadline = time.time() + args.seconds
     captured = 0
     seen_paths = set()
+    lines = queue.Queue()
+
+    def read_stdout():
+        for output in process.stdout or ():
+            lines.put(output)
+
+    threading.Thread(target=read_stdout, daemon=True).start()
     try:
         while captured < args.events and time.time() < deadline:
-            line = process.stdout.readline() if process.stdout else ""
-            if not line:
+            try:
+                line = lines.get(timeout=0.1)
+            except queue.Empty:
                 if process.poll() is not None:
                     break
-                time.sleep(0.1)
                 continue
             try:
                 event = json.loads(line)

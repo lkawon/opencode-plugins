@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Read-only LAN telemetry endpoint for the computer running the GPU."""
 import ctypes
+import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -14,9 +16,14 @@ HOST = os.environ.get("GPU_STATS_HOST", "0.0.0.0")
 PORT = int(os.environ.get("GPU_STATS_PORT", "8765"))
 LM_URL = os.environ.get("LMSTUDIO_URL", "http://127.0.0.1:1234").rstrip("/")
 TOKEN = os.environ.get("GPU_STATS_TOKEN", "token123")
+LMSTUDIO_LOG_DIR = os.environ.get(
+    "LMSTUDIO_LOG_DIR",
+    os.path.join(os.path.expanduser("~"), ".lmstudio", "apps", "bionic", "server-logs"),
+)
 LAST_PERFORMANCE = {"model": "", "tokens_per_second": None}
 MODEL_PERFORMANCE = {}
 MODEL_ACTIVITY = {}
+MODEL_GENERATION = {}
 LOADED_MODELS = []
 STATE_LOCK = threading.Lock()
 _INSTANCE_MUTEX = None
@@ -200,6 +207,113 @@ def _record_activity(model, event):
         activity["prompt_processing_progress"] = prompt_progress
 
 
+def _model_key(model):
+    return str(_find_value(
+        model,
+        {"model", "model_key", "modelKey", "identifier", "modelIdentifier", "path"},
+    ) or "")
+
+
+def _refresh_generating_activity(models):
+    now = time.time()
+    active = set()
+    for model in models:
+        if not isinstance(model, dict):
+            continue
+        key = _model_key(model)
+        if not key:
+            continue
+        status = str(model.get("generation_status") or model.get("generationStatus") or model.get("status") or "").lower()
+        if status == "generating":
+            active.add(key)
+            state = MODEL_GENERATION.setdefault(key, {"started_at": now, "base_tokens": 0})
+            speed = MODEL_PERFORMANCE.get(key, {}).get("current_tokens_per_second")
+            if speed is None and LAST_PERFORMANCE.get("model") == key:
+                speed = LAST_PERFORMANCE.get("tokens_per_second")
+            activity = MODEL_ACTIVITY.setdefault(key, {})
+            activity["updated_at"] = now
+            if speed:
+                activity["generated_tokens"] = int(state["base_tokens"] + max(0, now - state["started_at"]) * speed)
+        else:
+            MODEL_GENERATION.pop(key, None)
+            if status == "processingprompt":
+                activity = MODEL_ACTIVITY.setdefault(key, {})
+                activity["updated_at"] = now
+                activity["generated_tokens"] = 0
+    for key in list(MODEL_GENERATION):
+        if key not in active:
+            MODEL_GENERATION.pop(key, None)
+
+
+def _activity_key():
+    if len(LOADED_MODELS) != 1:
+        return ""
+    return _model_key(LOADED_MODELS[0])
+
+
+def _latest_server_log():
+    pattern = os.path.join(LMSTUDIO_LOG_DIR, "**", "*.log")
+    files = glob.glob(pattern, recursive=True)
+    return max(files, key=os.path.getmtime) if files else ""
+
+
+def _record_log_line(line):
+    progress_match = re.search(r"\[INFO\]\[([^\]]+)\] Prompt processing progress: ([0-9.]+)%", line)
+    if progress_match:
+        model = progress_match.group(1)
+        _record_activity(model, {"prompt_processing_progress": float(progress_match.group(2)) / 100})
+        return
+
+    prompt_match = re.search(
+        r"prompt processing, n_tokens =\s*(\d+), progress =\s*([0-9.]+).*?/\s*([0-9.]+) tokens per second",
+        line,
+    )
+    if prompt_match:
+        model = _activity_key()
+        if model:
+            _record_activity(model, {
+                "prompt_tokens_processed": int(prompt_match.group(1)),
+                "prompt_processing_progress": float(prompt_match.group(2)),
+            })
+            speed = float(prompt_match.group(3))
+            LAST_PERFORMANCE.update({"model": model, "tokens_per_second": speed})
+            _record_performance(model, speed)
+        return
+
+    eval_match = re.search(r"\beval time =\s*[0-9.]+ ms /\s*(\d+) tokens .*?\s([0-9.]+) tokens per second", line)
+    if eval_match and "prompt eval time" not in line:
+        model = _activity_key()
+        if model:
+            _record_activity(model, {"generated_tokens": int(eval_match.group(1))})
+            speed = float(eval_match.group(2))
+            LAST_PERFORMANCE.update({"model": model, "tokens_per_second": speed})
+            _record_performance(model, speed)
+
+
+def _server_log_tail():
+    path = ""
+    position = 0
+    while True:
+        try:
+            latest = _latest_server_log()
+            if latest and latest != path:
+                path = latest
+                position = os.path.getsize(path)
+            if path:
+                size = os.path.getsize(path)
+                if size < position:
+                    position = 0
+                with open(path, "r", encoding="utf-8", errors="replace") as log:
+                    log.seek(position)
+                    for line in log:
+                        with STATE_LOCK:
+                            _record_log_line(line)
+                    position = log.tell()
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+
 def _performance_log():
     executable = shutil.which("lms")
     if not executable:
@@ -211,6 +325,8 @@ def _performance_log():
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 **NO_WINDOW,
             )
             for line in process.stdout or ():
@@ -249,6 +365,8 @@ def _loaded_models_loop():
             output = subprocess.check_output(
                 [executable, "ps", "--json"],
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 stderr=subprocess.DEVNULL,
                 timeout=4,
                 **NO_WINDOW,
@@ -257,6 +375,7 @@ def _loaded_models_loop():
             if isinstance(models, list):
                 with STATE_LOCK:
                     LOADED_MODELS = models
+                    _refresh_generating_activity(models)
         except Exception:
             pass
         time.sleep(0.5)
@@ -318,6 +437,7 @@ def main():
             return
 
     threading.Thread(target=_performance_log, daemon=True).start()
+    threading.Thread(target=_server_log_tail, daemon=True).start()
     threading.Thread(target=_loaded_models_loop, daemon=True).start()
     print(f"GPU/LM Studio stats listening on {HOST}:{PORT}", flush=True)
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
