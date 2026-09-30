@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python compile
+        run: python -m py_compile llamacpp-and-nvidia/gpu_llamacpp_server.py sync_llamacpp_context.py
+
+      - name: Python tests (telemetry server)
+        run: python tests/test_server.py
+
+      - name: Python tests (context sync)
+        run: python tests/test_sync.py
+
+      - name: Node tests (llamacpp client)
+        run: node llamacpp-and-nvidia/tests/llamacpp-client.test.mjs
+
+      - name: Node tests (openai-status)
+        run: node openai-status/tests/openai-status.test.mjs
+
+      - name: Shell syntax
+        run: |
+          sh -n sync-llamacpp-context.sh
+          sh -n llamacpp-and-nvidia/install-global.sh
+          sh -n openai-status/install-global.sh
+          sh -n install-macos.sh
+          sh -n skills/new-month/run.sh
+          sh -n skills/new-month/install.sh
