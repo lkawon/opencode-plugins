@@ -10,12 +10,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 PLUGINS = {
-    "lm-studio-and-nvidia": {
+    "llamacpp-and-nvidia": {
         "files": [
-            (".opencode/plugins/lm-studio-and-nvidia.ts", "plugins/lm-studio-and-nvidia.ts"),
-            (".opencode/plugins/lm-studio-and-nvidia/tui.tsx", "plugins/lm-studio-and-nvidia/tui.tsx"),
+            (".opencode/lib/llamacpp-client.ts", "lib/llamacpp-client.ts"),
+            (".opencode/plugins/llamacpp-and-nvidia.ts", "plugins/llamacpp-and-nvidia.ts"),
+            (".opencode/plugins/llamacpp-and-nvidia/tui.tsx", "plugins/llamacpp-and-nvidia/tui.tsx"),
         ],
-        "tui": "./plugins/lm-studio-and-nvidia/tui.tsx",
+        "tui": "./plugins/llamacpp-and-nvidia/tui.tsx",
     },
     "openai-status": {
         "files": [
@@ -72,11 +73,17 @@ def install(selected, destination):
         entries.append(entry)
         print(f"Installed {name}")
 
-    if "lm-studio-and-nvidia" in selected:
-        entries[:] = [item for item in entries if item != "./plugins/gpu-lmstudio/tui.tsx"]
+    if "llamacpp-and-nvidia" in selected:
+        for legacy_entry in (
+            "./plugins/gpu-lmstudio/tui.tsx",
+            "./plugins/lm-studio-and-nvidia/tui.tsx",
+        ):
+            entries[:] = [item for item in entries if item != legacy_entry]
         for legacy in (
             destination / "plugins/gpu-lmstudio",
             destination / "plugins/gpu-lmstudio.ts",
+            destination / "plugins/lm-studio-and-nvidia",
+            destination / "plugins/lm-studio-and-nvidia.ts",
             destination / "gpu_lmstudio_server.py",
         ):
             if legacy.is_dir():
