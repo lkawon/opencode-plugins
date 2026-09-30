@@ -5,3 +5,5 @@
 .test-install/
 openai-status/tests/fixtures/auth-refresh-run.json
 logs/
+.idea/
+*.iml
