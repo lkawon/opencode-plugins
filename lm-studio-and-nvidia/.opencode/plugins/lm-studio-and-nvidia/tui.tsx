@@ -21,6 +21,7 @@ type Stats = {
       model?: string
       tokens_per_second?: number | null
       models?: Record<string, ModelPerformance>
+      activity?: Record<string, ModelActivity>
     }
   }
 }
@@ -30,6 +31,13 @@ type ModelPerformance = {
   max_tokens_per_second?: number | null
   average_tokens_per_second?: number | null
   sample_count?: number
+}
+
+type ModelActivity = {
+  generated_tokens?: number
+  prompt_tokens_processed?: number
+  prompt_tokens_total?: number
+  prompt_processing_progress?: number
 }
 
 const endpoint = () => (process.env.GPU_STATS_URL ?? "http://127.0.0.1:8765").replace(/\/$/, "")
@@ -85,11 +93,26 @@ function Panel(props: { stats: Stats }) {
       ? <>{models().slice(0, 5).map((model, index) => <>
           {index > 0 && <text> </text>}
           <text>{(model.display_name ?? model.key ?? "?").slice(0, 24)}</text>
-          <text fg="gray">Status {statusFor(model, props.stats.lmstudio?.loaded_models)}</text>
+          <ModelStatus model={model} performance={performance()} loaded={props.stats.lmstudio?.loaded_models} />
           <text fg="gray">Tokens/s {speedValues(model, performance())}</text>
         </>)}</>
       : <text fg="gray">Offline</text>}
   </box>
+}
+
+function ModelStatus(props: {
+  model: { key?: string }
+  performance: { activity?: Record<string, ModelActivity> } | undefined
+  loaded: unknown[] | undefined
+}) {
+  const status = () => statusFor(props.model, props.loaded)
+  const prompt = () => status() === "processing prompt" ? promptProgressLine(props.model, props.performance) : ""
+  const generated = () => generatedTokensLine(props.model, props.performance, props.loaded)
+  return <>
+    <text fg="gray">Status {status()}</text>
+    {prompt() && <text fg="gray">{prompt()}</text>}
+    {generated() && <text fg="gray">{generated()}</text>}
+  </>
 }
 
 function statusFor(model: { key?: string }, loaded: unknown[] | undefined) {
@@ -105,7 +128,7 @@ function statusFor(model: { key?: string }, loaded: unknown[] | undefined) {
 
 function speedFor(
   model: { key?: string },
-  performance: { model?: string; tokens_per_second?: number | null; models?: Record<string, ModelPerformance> } | undefined,
+  performance: { model?: string; tokens_per_second?: number | null; models?: Record<string, ModelPerformance>; activity?: Record<string, ModelActivity> } | undefined,
   field: keyof Pick<ModelPerformance, "current_tokens_per_second" | "max_tokens_per_second" | "average_tokens_per_second">,
 ) {
   const modelKey = (model.key ?? "").toLowerCase()
@@ -126,13 +149,55 @@ function speedFor(
 
 function speedValues(
   model: { key?: string },
-  performance: { model?: string; tokens_per_second?: number | null; models?: Record<string, ModelPerformance> } | undefined,
+  performance: { model?: string; tokens_per_second?: number | null; models?: Record<string, ModelPerformance>; activity?: Record<string, ModelActivity> } | undefined,
 ) {
   return [
     speedFor(model, performance, "current_tokens_per_second"),
     speedFor(model, performance, "max_tokens_per_second"),
     speedFor(model, performance, "average_tokens_per_second"),
   ].join(" ")
+}
+
+function activityFor(
+  model: { key?: string },
+  performance: { activity?: Record<string, ModelActivity> } | undefined,
+) {
+  const modelKey = (model.key ?? "").toLowerCase()
+  return Object.entries(performance?.activity ?? {}).find(([key]) => {
+    const activityKey = key.toLowerCase()
+    if (!activityKey || !modelKey) return false
+    return activityKey.includes(modelKey) || modelKey.includes(activityKey)
+  })?.[1]
+}
+
+function promptProgressLine(
+  model: { key?: string },
+  performance: { activity?: Record<string, ModelActivity> } | undefined,
+) {
+  const activity = activityFor(model, performance)
+  const processed = activity?.prompt_tokens_processed
+  const total = activity?.prompt_tokens_total
+  let progress = activity?.prompt_processing_progress
+  if (typeof progress !== "number" && typeof processed === "number" && typeof total === "number" && total > 0) {
+    progress = processed / total
+  }
+  if (typeof progress !== "number" && typeof processed !== "number") return ""
+  const percent = typeof progress === "number" ? `${Math.round((progress <= 1 ? progress * 100 : progress))}%` : "?%"
+  const tokens = typeof processed === "number"
+    ? ` (${processed}${typeof total === "number" ? `/${total}` : ""})`
+    : ""
+  return `Prompt ${percent}${tokens}`
+}
+
+function generatedTokensLine(
+  model: { key?: string },
+  performance: { activity?: Record<string, ModelActivity> } | undefined,
+  loaded: unknown[] | undefined,
+) {
+  if (statusFor(model, loaded) !== "generating") return ""
+  const generated = activityFor(model, performance)?.generated_tokens
+  if (typeof generated !== "number") return ""
+  return `Generated ${generated} tokens`
 }
 
 const plugin: TuiPluginModule & { id: string } = { id: "lm-studio-and-nvidia.sidebar", tui }

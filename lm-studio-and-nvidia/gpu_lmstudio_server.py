@@ -16,6 +16,7 @@ LM_URL = os.environ.get("LMSTUDIO_URL", "http://127.0.0.1:1234").rstrip("/")
 TOKEN = os.environ.get("GPU_STATS_TOKEN", "token123")
 LAST_PERFORMANCE = {"model": "", "tokens_per_second": None}
 MODEL_PERFORMANCE = {}
+MODEL_ACTIVITY = {}
 LOADED_MODELS = []
 STATE_LOCK = threading.Lock()
 _INSTANCE_MUTEX = None
@@ -135,6 +136,15 @@ def _find_value(value, names):
     return None
 
 
+def _number(value):
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _record_performance(model, speed):
     aggregate = MODEL_PERFORMANCE.get(model)
     if aggregate is None:
@@ -152,6 +162,42 @@ def _record_performance(model, speed):
         aggregate["average_tokens_per_second"] * count + speed
     ) / (count + 1)
     aggregate["sample_count"] = count + 1
+
+
+def _record_activity(model, event):
+    generated_tokens = _number(_find_value(event, {
+        "generated_tokens", "generatedTokens", "completion_tokens", "completionTokens",
+        "output_tokens", "outputTokens", "predicted_tokens", "predictedTokens",
+        "tokens_generated", "tokensGenerated",
+    }))
+    prompt_processed = _number(_find_value(event, {
+        "prompt_tokens_processed", "promptTokensProcessed", "processed_prompt_tokens",
+        "processedPromptTokens", "prompt_processed_tokens", "promptProcessedTokens",
+        "prompt_eval_count", "promptEvalCount",
+    }))
+    prompt_total = _number(_find_value(event, {
+        "prompt_tokens_total", "promptTokensTotal", "total_prompt_tokens",
+        "totalPromptTokens", "prompt_total_tokens", "promptTotalTokens",
+        "prompt_tokens", "promptTokens",
+    }))
+    prompt_progress = _number(_find_value(event, {
+        "prompt_processing_progress", "promptProcessingProgress", "prompt_progress",
+        "promptProgress", "processing_progress", "processingProgress", "progress",
+    }))
+
+    if generated_tokens is None and prompt_processed is None and prompt_total is None and prompt_progress is None:
+        return
+
+    activity = MODEL_ACTIVITY.setdefault(model, {})
+    activity["updated_at"] = time.time()
+    if generated_tokens is not None:
+        activity["generated_tokens"] = int(generated_tokens)
+    if prompt_processed is not None:
+        activity["prompt_tokens_processed"] = int(prompt_processed)
+    if prompt_total is not None:
+        activity["prompt_tokens_total"] = int(prompt_total)
+    if prompt_progress is not None:
+        activity["prompt_processing_progress"] = prompt_progress
 
 
 def _performance_log():
@@ -172,13 +218,6 @@ def _performance_log():
                     event = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                speed = _find_value(event, {"tokens_per_second", "tokensPerSecond"})
-                if speed is None:
-                    continue
-                try:
-                    speed = float(speed)
-                except (TypeError, ValueError):
-                    continue
                 model = _find_value(event, {"model", "model_key", "modelKey", "identifier", "modelIdentifier"}) or ""
                 with STATE_LOCK:
                     key = str(model)
@@ -187,9 +226,13 @@ def _performance_log():
                             LOADED_MODELS[0],
                             {"model", "model_key", "modelKey", "identifier", "modelIdentifier", "path"},
                         ) or "")
-                    LAST_PERFORMANCE.update({"model": key, "tokens_per_second": speed})
                     if not key:
                         continue
+                    _record_activity(key, event)
+                    speed = _number(_find_value(event, {"tokens_per_second", "tokensPerSecond"}))
+                    if speed is None:
+                        continue
+                    LAST_PERFORMANCE.update({"model": key, "tokens_per_second": speed})
                     _record_performance(key, speed)
         except Exception:
             pass
@@ -225,6 +268,9 @@ def _lmstudio_state():
         performance = dict(LAST_PERFORMANCE)
         performance["models"] = {
             key: dict(value) for key, value in MODEL_PERFORMANCE.items()
+        }
+        performance["activity"] = {
+            key: dict(value) for key, value in MODEL_ACTIVITY.items()
         }
     return loaded, performance
 
