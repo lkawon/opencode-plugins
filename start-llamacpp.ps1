@@ -57,7 +57,7 @@ function Get-LlamaServerExe {
   $command = Get-Command llama-server -ErrorAction SilentlyContinue
   if (-not $command) {
     $candidate = Join-Path $env:ProgramFiles "llama-cuda\llama-server.exe"
-    if (Test-Path -LiteralPath $candidate) { $command = Get-Item -LiteralPath $candidate }
+    if (Test-Path -LiteralPath $candidate) { return $candidate }
   }
   if (-not $command) {
     throw "llama-server was not found in PATH (or %ProgramFiles%\llama-cuda). Set LLAMA_GGUF/PATH or install llama.cpp."
@@ -96,10 +96,13 @@ function Test-TelemetryReady {
 
 function Start-LlamaServer {
   $exe = Get-LlamaServerExe
+  if (-not (Test-Path -LiteralPath $LlamaGguf -PathType Leaf)) {
+    throw "Model file not found: $LlamaGguf (set LLAMA_GGUF to an existing GGUF file)"
+  }
   Write-Log "Starting llama-server: gguf=$LlamaGguf alias=$LlamaAlias ctx=$LlamaCtx ngl=$LlamaNgl"
   $argsList = @(
-    "-m", $LlamaGguf,
-    "--alias", $LlamaAlias,
+    "-m", ('"{0}"' -f $LlamaGguf),
+    "--alias", ('"{0}"' -f $LlamaAlias),
     "-c", $LlamaCtx,
     "-np", $LlamaNp,
     "-ngl", $LlamaNgl,
@@ -109,14 +112,22 @@ function Start-LlamaServer {
     "--port", $LlamaPort
   )
   if ($LlamaExtra) { $argsList += $LlamaExtra.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries) }
-  $process = Start-Process -FilePath $exe -ArgumentList $argsList -WindowStyle Hidden -PassThru
+  $stdout = Join-Path $LogDirectory "llama-server.stdout.log"
+  $stderr = Join-Path $LogDirectory "llama-server.stderr.log"
+  Write-Log "llama-server output: $stdout ; errors: $stderr"
+  $process = Start-Process -FilePath $exe -ArgumentList $argsList -WorkingDirectory (Split-Path -Parent $exe) -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
   Write-Log "llama-server launched (pid $($process.Id))."
   return $process
 }
 
 function Wait-ServerReady {
+  param([System.Diagnostics.Process]$Process)
   $deadline = (Get-Date).AddSeconds(180)
   while ((Get-Date) -lt $deadline) {
+    $Process.Refresh()
+    if ($Process.HasExited) {
+      throw "llama-server exited with code $($Process.ExitCode). See logs\llama-server.stderr.log and logs\llama-server.stdout.log."
+    }
     if (Test-ServerReady -BaseUrl $LlamaUrl) { return $true }
     Start-Sleep -Seconds 2
   }
@@ -143,8 +154,8 @@ if ($Mode -in @("server", "all")) {
   if (Test-ServerReady -BaseUrl $LlamaUrl) {
     Write-Log "llama-server already ready on $LlamaUrl (skipping start)."
   } else {
-    Start-LlamaServer | Out-Null
-    if (-not (Wait-ServerReady)) {
+    $serverProcess = Start-LlamaServer
+    if (-not (Wait-ServerReady -Process $serverProcess)) {
       throw "llama-server did not become ready on $LlamaUrl within 180s"
     }
     Write-Log "llama-server is ready on $LlamaUrl."

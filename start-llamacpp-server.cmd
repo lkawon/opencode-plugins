@@ -5,6 +5,7 @@ cd /d "%~dp0"
 rem Default token is auto-generated and persisted by the server when GPU_STATS_TOKEN
 rem is unset. Set it here (or in the environment) to pin a specific value.
 if not exist "%~dp0logs" mkdir "%~dp0logs"
+if not defined LLAMA_LOG_FILE set "LLAMA_LOG_FILE=%~dp0logs\llama-server.stderr.log"
 where python.exe >nul 2>&1
 if errorlevel 1 (
   echo Python was not found in PATH.

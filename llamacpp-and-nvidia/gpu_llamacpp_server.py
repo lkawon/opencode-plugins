@@ -14,6 +14,7 @@ import ctypes
 import hmac
 import json
 import os
+import re
 import secrets
 import stat
 import threading
@@ -24,6 +25,11 @@ from urllib.request import urlopen, Request
 HOST = os.environ.get("GPU_STATS_HOST", "127.0.0.1")
 PORT = int(os.environ.get("GPU_STATS_PORT", "8765"))
 LLAMA_URL = os.environ.get("LLAMA_SERVER_URL", "http://127.0.0.1:8080").rstrip("/")
+DEFAULT_LOG_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "logs"))
+LLAMA_LOG_FILE = os.environ.get(
+    "LLAMA_LOG_FILE",
+    os.path.join(DEFAULT_LOG_DIR, "llama-server.stderr.log"),
+)
 SAMPLE_INTERVAL = float(os.environ.get("GPU_STATS_SAMPLE_INTERVAL", "1.0"))
 MODEL_ID_CACHE_TTL = 30.0
 TOKEN_PATH = os.environ.get(
@@ -58,9 +64,15 @@ TOKEN = _load_or_create_token()
 
 STATE_LOCK = threading.Lock()
 MODEL_PERFORMANCE = {}
+LLAMA_LOG_STATE = {"task": None, "prompt_progress": None, "tg_3s": None, "updated_at": 0.0}
 MODEL_ID_CACHE = {"id": "", "at": 0.0}
 LAST_METRICS_AT = 0.0
 _INSTANCE_MUTEX = None
+
+
+PROMPT_PROGRESS_RE = re.compile(r"task\s+(\d+)\s+\| prompt processing, .*?progress =\s*([0-9.]+)")
+TG_RE = re.compile(r"task\s+(\d+)\s+\| n_gen =.*?tg(?:_3s)? =\s*([0-9.]+) t/s(?:,\s*tg_3s =\s*([0-9.]+) t/s)?")
+RELEASE_RE = re.compile(r"task\s+(\d+)\s+\| stop processing")
 
 
 # --- NVML: minimal direct binding; avoids spawning nvidia-smi. ---
@@ -224,18 +236,72 @@ def _record_performance(model, speed):
     aggregate["updated_at"] = now
 
 
+def _read_log_tail(path, max_bytes=65536):
+    with open(path, "rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        size = handle.tell()
+        handle.seek(max(0, size - max_bytes), os.SEEK_SET)
+        return handle.read().decode("utf-8", "replace")
+
+
+def _log_sampler():
+    """Parse llama-server log timing lines for prompt progress and tg_3s."""
+    while True:
+        try:
+            text = _read_log_tail(LLAMA_LOG_FILE)
+            task = None
+            prompt_progress = None
+            progress_task = None
+            tg_3s = None
+            for line in text.splitlines():
+                release = RELEASE_RE.search(line)
+                if release:
+                    if progress_task == release.group(1):
+                        prompt_progress = None
+                        progress_task = None
+                    continue
+                progress = PROMPT_PROGRESS_RE.search(line)
+                if progress:
+                    task = progress.group(1)
+                    progress_task = task
+                    prompt_progress = float(progress.group(2))
+                    continue
+                speed = TG_RE.search(line)
+                if speed:
+                    task = speed.group(1)
+                    tg_3s = float(speed.group(3) or speed.group(2))
+            model = _current_model_id()
+            now = time.time()
+            with STATE_LOCK:
+                LLAMA_LOG_STATE.update({
+                    "task": task,
+                    "prompt_progress": prompt_progress,
+                    "tg_3s": tg_3s,
+                    "updated_at": now,
+                })
+                if model and tg_3s is not None and tg_3s > 0:
+                    _record_performance(model, tg_3s)
+        except Exception:
+            pass
+        time.sleep(SAMPLE_INTERVAL)
+
+
 def _metrics_sampler():
-    """Poll /metrics on an interval and derive a live tokens/s from the counter delta."""
+    """Poll /metrics on an interval and track live generation tokens/s."""
     global LAST_METRICS_AT
     last_total = None
     last_time = None
     while True:
         try:
             metrics = parse_metrics(_http("/metrics"))
+            gauge = metrics.get("llamacpp:predicted_tokens_seconds")
             total = metrics.get("llamacpp:tokens_predicted_total")
             now = time.time()
             model = _current_model_id()
-            if model and last_total is not None and total is not None and total > last_total and last_time:
+            if model and gauge is not None and gauge > 0:
+                with STATE_LOCK:
+                    _record_performance(model, gauge)
+            elif model and last_total is not None and total is not None and total > last_total and last_time:
                 delta_time = now - last_time
                 if delta_time > 0:
                     with STATE_LOCK:
@@ -287,19 +353,14 @@ def _llamacpp_payload():
                     continue
                 n_prompt = slot.get("n_prompt_tokens")
                 n_processed = slot.get("n_prompt_tokens_processed")
-                progress = None
-                if (
-                    isinstance(n_prompt, (int, float)) and n_prompt > 0
-                    and isinstance(n_processed, (int, float))
-                ):
-                    progress = n_processed / n_prompt
                 slots.append({
                     "id": slot.get("id"),
                     "is_processing": bool(slot.get("is_processing")),
                     "n_ctx": slot.get("n_ctx"),
                     "n_prompt_tokens": n_prompt,
                     "n_prompt_tokens_processed": n_processed,
-                    "prompt_processing_progress": progress,
+                    "n_prompt_tokens_cache": slot.get("n_prompt_tokens_cache"),
+                    "next_token": slot.get("next_token") if isinstance(slot.get("next_token"), list) else [],
                 })
     except Exception:
         pass
@@ -308,6 +369,7 @@ def _llamacpp_payload():
     with STATE_LOCK:
         performance = {key: dict(value) for key, value in MODEL_PERFORMANCE.items()}
         performance["last_updated"] = LAST_METRICS_AT
+        log_state = dict(LLAMA_LOG_STATE)
 
     return {
         "available": True,
@@ -316,6 +378,7 @@ def _llamacpp_payload():
         "slots": slots,
         "model_id": model_id,
         "performance": performance,
+        "log": log_state,
     }
 
 
@@ -362,6 +425,7 @@ def main():
             return
 
     threading.Thread(target=_metrics_sampler, daemon=True).start()
+    threading.Thread(target=_log_sampler, daemon=True).start()
     print(f"llama.cpp/NVIDIA stats listening on {HOST}:{PORT} (llama server: {LLAMA_URL})", flush=True)
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 

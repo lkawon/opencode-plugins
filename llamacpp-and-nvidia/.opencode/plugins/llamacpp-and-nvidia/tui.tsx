@@ -44,23 +44,18 @@ const tui: TuiPlugin = async (api) => {
 }
 
 function Panel(props: { stats: Stats; online: boolean; lastError: string }) {
-  if (!props.online) {
-    return <box flexDirection="column">
-      <text>llama.cpp</text>
-      <text fg="red">Telemetry offline</text>
-      <text fg="gray">{props.lastError || "server unreachable"}</text>
-    </box>
-  }
-
   return <box flexDirection="column">
     <GpuSection gpus={props.stats.gpu?.gpus ?? []} />
     <text> </text>
     <ModelSection
+      online={props.online}
+      lastError={props.lastError}
       available={props.stats.llamacpp?.available}
       error={props.stats.llamacpp?.error}
       model={props.stats.llamacpp?.model}
       slot={props.stats.llamacpp?.slots?.[0]}
       performance={props.stats.llamacpp?.performance}
+      log={props.stats.llamacpp?.log}
       modelId={props.stats.llamacpp?.model?.id ?? props.stats.llamacpp?.model_id ?? ""}
     />
   </box>
@@ -88,54 +83,70 @@ function vramLine(gpu: Gpu) {
 
 type SlotState = { state: string; progress?: number }
 
+function decodedTokens(slot?: LlamacppSlot) {
+  return slot?.next_token?.reduce((sum, token) => sum + (token.n_decoded ?? 0), 0) ?? 0
+}
+
 function slotState(slot?: LlamacppSlot): SlotState {
   if (!slot) return { state: "unknown" }
   if (!slot.is_processing) return { state: "idle" }
-  const total = slot.n_prompt_tokens ?? 0
-  const processed = slot.n_prompt_tokens_processed ?? 0
-  if (total > 0 && processed < total) {
-    return { state: "processing prompt", progress: processed / total }
-  }
-  return { state: "generating" }
+  const decoded = decodedTokens(slot)
+  if (decoded > 0) return { state: "generating" }
+  return { state: "processing prompt" }
 }
 
 function statusLabel(state: SlotState) {
-  if (state.state === "processing prompt" && typeof state.progress === "number") {
-    const pct = state.progress <= 1 ? state.progress * 100 : state.progress
-    return `processing prompt (${Math.round(pct)}%)`
-  }
   return state.state
 }
 
 function ModelSection(props: {
+  online: boolean
+  lastError: string
   available?: boolean
   error?: string
   model?: { name?: string; id?: string; n_ctx?: number; n_params?: number; size?: number; ftype?: string }
   slot?: LlamacppSlot
   performance?: Record<string, ModelPerformance> & { last_updated?: number }
+  log?: { prompt_progress?: number | null; tg_3s?: number | null; updated_at?: number }
   modelId: string
 }) {
-  if (!props.available) {
-    return <text fg="gray">llama.cpp offline: {props.error ?? "unreachable"}</text>
+  const perf = () => props.performance?.[props.modelId]
+  const titleText = () => {
+    if (!props.online) return "llama.cpp offline"
+    if (!props.available) return "llama.cpp offline"
+    return (props.model?.name ?? props.model?.id ?? "no model loaded").slice(0, 24)
   }
-  if (!props.model) {
-    return <text fg="gray">no model loaded</text>
+  const contextText = () => {
+    if (!props.online) return "llama.cpp offline"
+    if (!props.available) return " "
+    return `context size ${props.model?.n_ctx ?? "?"}`
   }
-
-  const perf = props.performance?.[props.modelId]
-  const lastUpdated = props.performance?.last_updated
-  const speeds = [
-    currentSpeed(perf, lastUpdated),
-    perf?.max_tokens_per_second?.toFixed(1) ?? "\u2014",
-    perf?.average_tokens_per_second?.toFixed(1) ?? "\u2014",
-  ].join(" ")
+  const speedText = () => props.log?.tg_3s?.toFixed(1) ?? perf()?.current_tokens_per_second?.toFixed(1) ?? "\u2014"
+  const tokensText = () => {
+    const current = speedText()
+    const avg = perf()?.average_tokens_per_second?.toFixed(1) ?? "\u2014"
+    const max = perf()?.max_tokens_per_second?.toFixed(1) ?? "\u2014"
+    return `${current} ${avg} ${max}`
+  }
+  const statusText = () => {
+    if (!props.online) return " "
+    if (!props.available || !props.model) return " "
+    const state = slotState(props.slot)
+    if (state.state === "processing prompt") {
+      const progress = typeof props.log?.prompt_progress === "number" ? props.log.prompt_progress : 0
+      return `processing prompt ${Math.round(progress * 100)}%`
+    }
+    if (state.state === "generating") return `generating ${decodedTokens(props.slot)} generated tokens`
+    return statusLabel(state)
+  }
+  const showDetails = () => props.online && props.available
+  const showTokenLine = () => props.online && props.available && !!props.model
 
   return <box flexDirection="column">
-    <text>{(props.model.name ?? props.model.id ?? "?").slice(0, 24)}</text>
-    <text fg="gray">{quantLine(props.model)}</text>
-    <text fg="gray">ctx {props.model.n_ctx?.toLocaleString() ?? "?"}</text>
-    <text fg="gray">status {statusLabel(slotState(props.slot))}</text>
-    <text fg="gray">Tokens/s {speeds}</text>
+    <text>{titleText()}</text>
+    <text fg="gray" height={showDetails() ? 1 : 0}>{showDetails() ? contextText() : ""}</text>
+    <text fg="gray" height={showDetails() ? 1 : 0}>{showDetails() ? statusText() : ""}</text>
+    <text fg="gray" height={showTokenLine() ? 1 : 0}>{showTokenLine() ? `tokens ${tokensText()}` : ""}</text>
   </box>
 }
 

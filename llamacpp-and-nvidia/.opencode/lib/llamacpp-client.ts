@@ -26,7 +26,8 @@ export type LlamacppSlot = {
   n_ctx?: number
   n_prompt_tokens?: number
   n_prompt_tokens_processed?: number
-  prompt_processing_progress?: number
+  n_prompt_tokens_cache?: number
+  next_token?: Array<{ n_decoded?: number; has_next_token?: boolean }>
 }
 
 export type ModelPerformance = {
@@ -45,6 +46,7 @@ export type Llamacpp = {
   slots?: LlamacppSlot[]
   model_id?: string
   performance?: Record<string, ModelPerformance> & { last_updated?: number }
+  log?: { prompt_progress?: number | null; tg_3s?: number | null; updated_at?: number }
 }
 
 export type Stats = {
