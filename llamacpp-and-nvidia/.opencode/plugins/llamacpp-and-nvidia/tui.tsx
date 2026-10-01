@@ -136,7 +136,7 @@ function ModelSection(props: {
       const progress = typeof props.log?.prompt_progress === "number" ? props.log.prompt_progress : 0
       return `processing prompt ${Math.round(progress * 100)}%`
     }
-    if (state.state === "generating") return `generating ${decodedTokens(props.slot)} generated tokens`
+    if (state.state === "generating") return `generating ${decodedTokens(props.slot)}`
     return statusLabel(state)
   }
   const showDetails = () => props.online && props.available

@@ -44,7 +44,7 @@ not create additional servers on port `8765`.
 The server uses these defaults:
 
 ```text
-GPU_STATS_HOST=127.0.0.1
+GPU_STATS_HOST=0.0.0.0
 GPU_STATS_PORT=8765
 LLAMA_SERVER_URL=http://127.0.0.1:8080
 ```
@@ -93,9 +93,9 @@ export GPU_STATS_URL="http://GPU_COMPUTER_IP:8765"
 export GPU_STATS_TOKEN="<token>"
 ```
 
-Only expose port `8765` on a trusted LAN (set `GPU_STATS_HOST=0.0.0.0` on the
-GPU machine to accept remote connections). Restart OpenCode after changing the
-configuration.
+The server binds `0.0.0.0` by default, so it is reachable on the LAN. Only
+expose port `8765` on a trusted network; the bearer token is required for all
+requests. Restart OpenCode after changing the configuration.
 
 ## Global plugin installation
 
