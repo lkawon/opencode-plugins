@@ -25,7 +25,7 @@ service that pulls data from llama.cpp's first-class endpoints — no `lms` CLI:
 - Prompt progress and generation speed from the llama-server stderr log.
 - Tokens/s (max / average) sampled from llama.cpp `GET /metrics`.
 
-The telemetry server binds `127.0.0.1` by default and always requires a bearer
+The telemetry server binds `0.0.0.0` by default and always requires a bearer
 token (fail closed). A token is generated once and persisted to
 `~/.config/opencode/llamacpp-stats.token` unless `GPU_STATS_TOKEN` is set.
 

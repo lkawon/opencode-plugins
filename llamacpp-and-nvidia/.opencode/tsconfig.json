@@ -11,5 +11,5 @@
     "target": "ESNext",
     "types": ["node"]
   },
-  "include": ["lib/**/*.ts", "plugins/**/*.ts", "plugins/**/*.tsx"]
+  "include": ["index.ts", "tui.tsx", "lib/**/*.ts"]
 }

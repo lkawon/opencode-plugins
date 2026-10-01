@@ -10,12 +10,17 @@ if (-not $Destination) {
 $destination = $Destination
 $pluginDirectory = Join-Path $destination "plugins\llamacpp-and-nvidia"
 
+# Copy the v2 plugin package (index.ts + tui.tsx + package.json + lib/).
 New-Item -ItemType Directory -Force -Path $pluginDirectory | Out-Null
-Copy-Item -LiteralPath (Join-Path $source "plugins\llamacpp-and-nvidia.ts") -Destination (Join-Path $destination "plugins\llamacpp-and-nvidia.ts") -Force
-Copy-Item -LiteralPath (Join-Path $source "plugins\llamacpp-and-nvidia\tui.tsx") -Destination (Join-Path $pluginDirectory "tui.tsx") -Force
-New-Item -ItemType Directory -Force -Path (Join-Path $destination "lib") | Out-Null
-Copy-Item -LiteralPath (Join-Path $source "lib\llamacpp-client.ts") -Destination (Join-Path $destination "lib\llamacpp-client.ts") -Force
+foreach ($file in @("package.json", "index.ts", "tui.tsx")) {
+  Copy-Item -LiteralPath (Join-Path $source $file) -Destination (Join-Path $pluginDirectory $file) -Force
+}
+$libSource = Join-Path $source "lib"
+if (Test-Path -LiteralPath $libSource) {
+  Copy-Item -LiteralPath $libSource -Destination $pluginDirectory -Recurse -Force
+}
 
+# Merge runtime dependencies into the global package.json.
 $sourcePackage = Get-Content -LiteralPath (Join-Path $source "package.json") -Raw | ConvertFrom-Json
 $packagePath = Join-Path $destination "package.json"
 $package = if (Test-Path -LiteralPath $packagePath) {
@@ -29,38 +34,48 @@ if (-not $package.PSObject.Properties["dependencies"]) {
 foreach ($dependency in $sourcePackage.dependencies.PSObject.Properties) {
   $package.dependencies | Add-Member -NotePropertyName $dependency.Name -NotePropertyValue $dependency.Value -Force
 }
+if ($package.dependencies.PSObject.Properties["@opencode-ai/plugin"]) {
+  $package.dependencies | Remove-Member -Name "@opencode-ai/plugin"
+}
 $package | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $packagePath -Encoding utf8
 
-$legacyDirectory = Join-Path $destination "plugins\lm-studio-and-nvidia"
-if (Test-Path -LiteralPath $legacyDirectory) {
-  Remove-Item -LiteralPath $legacyDirectory -Recurse -Force
-}
-$legacyFile = Join-Path $destination "plugins\lm-studio-and-nvidia.ts"
-if (Test-Path -LiteralPath $legacyFile) {
-  Remove-Item -LiteralPath $legacyFile -Force
-}
-$legacyDirectory2 = Join-Path $destination "plugins\gpu-lmstudio"
-if (Test-Path -LiteralPath $legacyDirectory2) {
-  Remove-Item -LiteralPath $legacyDirectory2 -Recurse -Force
-}
-$legacyFile2 = Join-Path $destination "plugins\gpu-lmstudio.ts"
-if (Test-Path -LiteralPath $legacyFile2) {
-  Remove-Item -LiteralPath $legacyFile2 -Force
-}
-
-$tuiPath = Join-Path $destination "tui.json"
-$config = if (Test-Path -LiteralPath $tuiPath) {
-  Get-Content -LiteralPath $tuiPath -Raw | ConvertFrom-Json
+# Register the package in opencode.json under the v2 `plugins` key.
+$configPath = Join-Path $destination "opencode.json"
+$config = if (Test-Path -LiteralPath $configPath) {
+  Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
 } else {
-  [pscustomobject]@{ '$schema' = "https://opencode.ai/tui.json"; plugin = @() }
+  [pscustomobject]@{ '$schema' = "https://opencode.ai/config.json"; plugins = @() }
 }
-if (-not $config.PSObject.Properties["plugin"]) {
-  $config | Add-Member -NotePropertyName plugin -NotePropertyValue @()
+if (-not $config.PSObject.Properties["plugins"]) {
+  $config | Add-Member -NotePropertyName plugins -NotePropertyValue @()
 }
-$entry = "./plugins/llamacpp-and-nvidia/tui.tsx"
-$toRemove = @($entry, "./plugins/lm-studio-and-nvidia/tui.tsx", "./plugins/gpu-lmstudio/tui.tsx")
-$config.plugin = @($config.plugin | Where-Object { $_ -notin $toRemove }) + $entry
-$config | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tuiPath -Encoding utf8
+$targetPackage = "./plugins/llamacpp-and-nvidia"
+$entry = [pscustomobject]@{ package = $targetPackage }
+$filtered = @($config.plugins | Where-Object {
+  $pkg = if ($_.PSObject.Properties["package"]) { $_.package } else { $_ }
+  $pkg -ne $targetPackage
+})
+$config.plugins = @($filtered) + $entry
+$config | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $configPath -Encoding utf8
+
+# Remove V1-era artifacts that the package layout replaces.
+$legacy = @(
+  (Join-Path $destination "lib"),
+  (Join-Path $destination "tui.json"),
+  (Join-Path $destination "plugins\llamacpp-and-nvidia.ts"),
+  (Join-Path $destination "plugins\lm-studio-and-nvidia"),
+  (Join-Path $destination "plugins\lm-studio-and-nvidia.ts"),
+  (Join-Path $destination "plugins\gpu-lmstudio"),
+  (Join-Path $destination "plugins\gpu-lmstudio.ts"),
+  (Join-Path $destination "gpu_lmstudio_server.py")
+)
+foreach ($item in $legacy) {
+  if (Test-Path -LiteralPath $item) {
+    $itemInfo = Get-Item -LiteralPath $item
+    if ($itemInfo.PSIsContainer) { Remove-Item -LiteralPath $item -Recurse -Force }
+    else { Remove-Item -LiteralPath $item -Force }
+  }
+}
 
 Write-Host "llama.cpp and NVIDIA plugin installed in:"
 Write-Host $destination

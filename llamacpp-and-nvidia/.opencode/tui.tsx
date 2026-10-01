@@ -1,47 +1,46 @@
 /** @jsxImportSource @opentui/solid */
 import { createSignal } from "solid-js"
-import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
+import { Plugin } from "@opencode/plugin/tui"
 import {
   fetchStats,
   type Gpu,
   type LlamacppSlot,
   type ModelPerformance,
   type Stats,
-} from "../../lib/llamacpp-client"
+} from "./lib/llamacpp-client"
 
 const REFRESH_MS = 1_000
 const CURRENT_STALE_S = 15
 
-const tui: TuiPlugin = async (api) => {
-  const [stats, setStats] = createSignal<Stats>({})
-  const [online, setOnline] = createSignal(true)
-  const [lastError, setLastError] = createSignal("")
+export default Plugin.define({
+  id: "llamacpp-and-nvidia.sidebar",
+  setup(context) {
+    const [stats, setStats] = createSignal<Stats>({})
+    const [online, setOnline] = createSignal(true)
+    const [lastError, setLastError] = createSignal("")
 
-  const refresh = async () => {
-    try {
-      setStats(await fetchStats())
-      setOnline(true)
-      setLastError("")
-    } catch (error) {
-      setOnline(false)
-      setLastError(error instanceof Error ? error.message : String(error))
+    const refresh = async () => {
+      try {
+        setStats(await fetchStats())
+        setOnline(true)
+        setLastError("")
+      } catch (error) {
+        setOnline(false)
+        setLastError(error instanceof Error ? error.message : String(error))
+      }
     }
-    api.renderer.requestRender()
-  }
 
-  await refresh()
-  const timer = setInterval(refresh, REFRESH_MS)
-  api.lifecycle.onDispose(() => clearInterval(timer))
+    void refresh()
+    const timer = setInterval(refresh, REFRESH_MS)
 
-  api.slots.register({
-    order: 50,
-    slots: {
-      sidebar_content() {
-        return <Panel stats={stats()} online={online()} lastError={lastError()} />
-      },
-    },
-  })
-}
+    context.ui.slot({
+      append: "sidebar.content",
+      render: () => <Panel stats={stats()} online={online()} lastError={lastError()} />,
+    })
+
+    return () => clearInterval(timer)
+  },
+})
 
 function Panel(props: { stats: Stats; online: boolean; lastError: string }) {
   return <box flexDirection="column">
@@ -121,11 +120,11 @@ function ModelSection(props: {
     if (!props.available) return " "
     return `context size ${props.model?.n_ctx ?? "?"}`
   }
-  const speedText = () => props.log?.tg_3s?.toFixed(1) ?? perf()?.current_tokens_per_second?.toFixed(1) ?? "\u2014"
+  const speedText = () => props.log?.tg_3s?.toFixed(1) ?? perf()?.current_tokens_per_second?.toFixed(1) ?? "—"
   const tokensText = () => {
     const current = speedText()
-    const avg = perf()?.average_tokens_per_second?.toFixed(1) ?? "\u2014"
-    const max = perf()?.max_tokens_per_second?.toFixed(1) ?? "\u2014"
+    const avg = perf()?.average_tokens_per_second?.toFixed(1) ?? "—"
+    const max = perf()?.max_tokens_per_second?.toFixed(1) ?? "—"
     return `${current} ${avg} ${max}`
   }
   const statusText = () => {
@@ -159,11 +158,8 @@ function quantLine(model: { ftype?: string; n_params?: number; size?: number }) 
 }
 
 function currentSpeed(perf: ModelPerformance | undefined, lastUpdated: number | undefined) {
-  if (!perf || typeof perf.current_tokens_per_second !== "number") return "\u2014"
-  if (typeof perf.updated_at !== "number" || typeof lastUpdated !== "number") return "\u2014"
-  if (lastUpdated - perf.updated_at > CURRENT_STALE_S) return "\u2014"
+  if (!perf || typeof perf.current_tokens_per_second !== "number") return "—"
+  if (typeof perf.updated_at !== "number" || typeof lastUpdated !== "number") return "—"
+  if (lastUpdated - perf.updated_at > CURRENT_STALE_S) return "—"
   return perf.current_tokens_per_second.toFixed(1)
 }
-
-const plugin: TuiPluginModule & { id: string } = { id: "llamacpp-and-nvidia.sidebar", tui }
-export default plugin
