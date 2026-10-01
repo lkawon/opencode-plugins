@@ -29,7 +29,7 @@ if (-not (Test-Path -LiteralPath $bootScript)) {
 $user = "$env:USERDOMAIN\$env:USERNAME"
 $action = New-ScheduledTaskAction `
   -Execute "powershell.exe" `
-  -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$bootScript`" --mode all"
+  -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$bootScript`" -mode start -service all"
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
 $settings = New-ScheduledTaskSettingsSet `
   -AllowStartIfOnBatteries `
@@ -59,4 +59,4 @@ Register-ScheduledTask `
 
 Write-Host "Scheduled task installed: $TaskName"
 Write-Host "Boot script: $bootScript"
-Write-Host "At logon it starts llama-server (--mode all), waits for /health, then starts telemetry."
+Write-Host "At logon it starts llama-server, waits for /health, then starts telemetry."

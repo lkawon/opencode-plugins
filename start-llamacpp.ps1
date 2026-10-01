@@ -1,8 +1,14 @@
-# Boot script for the Windows GPU machine. Three modes:
+# Boot script for the Windows GPU machine.
 #
-#   --mode telemetry  (default) Start telemetry only; observe the already-running llama-server.
-#   --mode server          Start/restart llama-server standalone.
-#   --mode all             Start llama-server, then telemetry (hands-off logon boot).
+# Parameters:
+#   -mode start|stop|restart        What to do (default: start).
+#   -service llama|telemetry|all    Which service to act on (default: all).
+#                                   "llama" = llama-server, "telemetry" = GPU stats server.
+#
+# Examples:
+#   .\start-llamacpp.ps1                                    Start llama-server + telemetry
+#   .\start-llamacpp.ps1 -mode stop -service llama           Stop llama-server only
+#   .\start-llamacpp.ps1 -mode restart -service telemetry    Restart telemetry only
 #
 # The telemetry server attaches to llama-server's first-class HTTP endpoints
 # (/health, /v1/models, /slots, /metrics) -- it never spawns the `lms` CLI or
@@ -14,8 +20,10 @@
 #   GPU_STATS_HOST, GPU_STATS_PORT, GPU_STATS_TOKEN, GPU_STATS_URL
 
 param(
-  [ValidateSet("server", "all", "telemetry")]
-  [string]$Mode = "telemetry"
+  [ValidateSet("start", "stop", "restart")]
+  [string]$Mode = "start",
+  [ValidateSet("llama", "telemetry", "all")]
+  [string]$Service = "all"
 )
 
 $ErrorActionPreference = "Stop"
@@ -94,6 +102,28 @@ function Test-TelemetryReady {
   }
 }
 
+function Stop-ByPort {
+  param([int]$Port, [string]$Label)
+  $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+  if (-not $conns) {
+    Write-Log "$Label is not listening on port $Port (nothing to stop)."
+    return $true
+  }
+  $pids = @($conns | Select-Object -ExpandProperty OwningProcess -Unique)
+  foreach ($procId in $pids) {
+    try {
+      Stop-Process -Id $procId -Force -ErrorAction Stop
+      Write-Log "Stopped $Label (pid $procId, port $Port)."
+    } catch {
+      Write-Log "Failed to stop $Label (pid $procId): $($_.Exception.Message)"
+      return $false
+    }
+  }
+  # Give the OS a moment to release the port before we try to start again.
+  Start-Sleep -Milliseconds 500
+  return $true
+}
+
 function Start-LlamaServer {
   $exe = Get-LlamaServerExe
   if (-not (Test-Path -LiteralPath $LlamaGguf -PathType Leaf)) {
@@ -135,12 +165,21 @@ function Wait-ServerReady {
 }
 
 function Start-Telemetry {
-  $launcher = Join-Path $RepoRoot "start-llamacpp-server.cmd"
-  if (-not (Test-Path -LiteralPath $launcher)) {
-    throw "Telemetry launcher not found: $launcher"
+  $python = Get-Command python.exe -ErrorAction SilentlyContinue
+  if (-not $python) {
+    throw "Python was not found in PATH. Install Python to run the telemetry server."
   }
-  & cmd.exe /c "`"$launcher`""
-  Write-Log "Telemetry server start requested (port $StatsPort)."
+  $serverScript = Join-Path $RepoRoot "llamacpp-and-nvidia\gpu_llamacpp_server.py"
+  if (-not (Test-Path -LiteralPath $serverScript)) {
+    throw "Telemetry server script not found: $serverScript"
+  }
+  if (-not $env:LLAMA_LOG_FILE) {
+    $env:LLAMA_LOG_FILE = Join-Path $LogDirectory "llama-server.stderr.log"
+  }
+  $out = Join-Path $LogDirectory "gpu-llamacpp-server.log"
+  Write-Log "Starting telemetry: $($python.Source) $serverScript (port $StatsPort)"
+  $process = Start-Process -FilePath $python.Source -ArgumentList "`"$serverScript`"" -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $out -PassThru
+  Write-Log "Telemetry launched (pid $($process.Id)). Log: $out"
 }
 
 trap {
@@ -148,9 +187,27 @@ trap {
   exit 1
 }
 
-Write-Log "llama.cpp boot: mode=$Mode"
+$doLlama = $Service -in @("all", "llama")
+$doTelemetry = $Service -in @("all", "telemetry")
 
-if ($Mode -in @("server", "all")) {
+Write-Log "llama.cpp: mode=$Mode service=$Service"
+
+if ($Mode -in @("stop", "restart")) {
+  $stopped = $true
+  if ($doLlama) { $stopped = (Stop-ByPort -Port $LlamaPort -Label "llama-server") -and $stopped }
+  if ($doTelemetry) { $stopped = (Stop-ByPort -Port $StatsPort -Label "telemetry") -and $stopped }
+  if (-not $stopped) {
+    Write-Log "Stop finished with errors (see above)."
+    exit 1
+  }
+  if ($Mode -eq "stop") {
+    Write-Log "Stop complete."
+    exit 0
+  }
+  Write-Log "Stopped. Restarting..."
+}
+
+if ($doLlama) {
   if (Test-ServerReady -BaseUrl $LlamaUrl) {
     Write-Log "llama-server already ready on $LlamaUrl (skipping start)."
   } else {
@@ -162,7 +219,7 @@ if ($Mode -in @("server", "all")) {
   }
 }
 
-if ($Mode -in @("all", "telemetry")) {
+if ($doTelemetry) {
   if (Test-TelemetryReady) {
     Write-Log "Telemetry already healthy (skipping start)."
   } else {
@@ -181,4 +238,4 @@ if ($Mode -in @("all", "telemetry")) {
   }
 }
 
-Write-Log "Boot complete."
+Write-Log "Done."

@@ -17,13 +17,13 @@ usage are documented in [`skills/new-month/README.md`](./skills/new-month/README
 
 The `llamacpp-and-nvidia` plugin reads a lightweight telemetry server running
 on the computer with the NVIDIA GPU. The server is a thin, read-only HTTP
-service that pulls data from llama.cpp's first-class endpoints — no `lms` CLI,
-no log scraping:
+service that pulls data from llama.cpp's first-class endpoints — no `lms` CLI:
 
 - GPU VRAM, utilization, temperature and power from `nvml.dll` directly.
 - Model id, context length (`n_ctx`), quantization and size from llama.cpp `GET /v1/models`.
-- Per-slot processing state and prompt progress from llama.cpp `GET /slots`.
-- Tokens/s (current / max / average) sampled from llama.cpp `GET /metrics`.
+- Per-slot processing state from llama.cpp `GET /slots`.
+- Prompt progress and generation speed from the llama-server stderr log.
+- Tokens/s (max / average) sampled from llama.cpp `GET /metrics`.
 
 The telemetry server binds `127.0.0.1` by default and always requires a bearer
 token (fail closed). A token is generated once and persisted to
@@ -53,25 +53,31 @@ Allow inbound TCP port `8765` (telemetry) through the Windows firewall only on
 a trusted LAN. The `openai-status` panel uses the OpenAI OAuth login stored
 locally by OpenCode on the Mac.
 
-After installing both plugins globally, start the Windows telemetry server with
-`start-llamacpp.cmd` (telemetry mode). OpenCode can then be started normally
-with `opencode`.
+After installing both plugins globally, start the Windows telemetry server
+from the repository root:
 
-## Auto-start on Windows (llama-server + telemetry)
-
-To bring up the whole stack at Windows logon, use the three-mode boot script:
-
-```cmd
-start-llamacpp.cmd --mode all
+```powershell
+.\start-llamacpp.ps1 -mode start -service telemetry
 ```
 
-Modes:
+OpenCode can then be started normally with `opencode`.
 
-- `--mode telemetry` (default) — start telemetry only; observe the already-running llama-server.
-- `--mode server` — start/restart llama-server standalone.
-- `--mode all` — start llama-server, wait for `/health`, then start telemetry.
+## Controlling the services (llama-server + telemetry)
 
-Each run appends to `logs\boot-llamacpp.log` in the repository root.
+The boot script takes two parameters:
+
+- `-mode start|stop|restart` — what to do (default: `start`).
+- `-service llama|telemetry|all` — which service to act on (default: `all`).
+
+```powershell
+.\start-llamacpp.ps1                                    # start llama-server + telemetry
+.\start-llamacpp.ps1 -mode stop -service llama           # stop llama-server only
+.\start-llamacpp.ps1 -mode restart -service telemetry    # restart telemetry only
+```
+
+`start-llamacpp.cmd` is a thin wrapper around the `.ps1`, so the same
+arguments work via the `.cmd`. Each run appends to `logs\boot-llamacpp.log`
+in the repository root.
 
 The script defaults to a typical llama.cpp launch. Override with environment
 variables before running it:
@@ -81,7 +87,7 @@ $env:LLAMA_GGUF  = "e:\path\to\model.gguf"
 $env:LLAMA_ALIAS = "qwen3.8-27b"
 $env:LLAMA_CTX   = "152576"
 $env:LLAMA_NGL   = "64"
-.\start-llamacpp.cmd --mode all
+.\start-llamacpp.ps1
 ```
 
 To run the boot automatically at logon, register a hidden scheduled task with:

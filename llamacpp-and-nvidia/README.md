@@ -28,14 +28,14 @@ telemetry server started.
 Start OpenCode from this directory. The local `.opencode/tui.json` and
 `opencode.json` load the sidebar panel and the `gpu_stats` tool automatically.
 The telemetry server is still required and is started with the root
-`start-llamacpp.cmd`.
+`start-llamacpp.cmd -mode start -service telemetry`.
 
 ## Running on Windows
 
 Start the telemetry server from the repository root:
 
 ```cmd
-..\start-llamacpp.cmd
+..\start-llamacpp.cmd -mode start -service telemetry
 ```
 
 The server uses a single-instance lock. Running the script multiple times does
@@ -68,7 +68,7 @@ From the repository root, start only the telemetry server in the background
 with:
 
 ```cmd
-..\start-llamacpp.cmd
+..\start-llamacpp.cmd -mode start -service telemetry
 ```
 
 For foreground diagnostics, run the Python process directly:
@@ -109,7 +109,8 @@ The installer copies only the OpenCode plugin files into
 `%USERPROFILE%\.config\opencode` and preserves other TUI plugin entries,
 including `openai-status`. It also removes any legacy `lm-studio-and-nvidia` /
 `gpu-lmstudio` files. The Python telemetry server remains in this project
-directory and is started with the root `start-llamacpp.cmd`. Close and restart
+directory and is started with the root
+`start-llamacpp.cmd -mode start -service telemetry`. Close and restart
 OpenCode after installation.
 
 On macOS or Linux, install only the client-side OpenCode files with:
