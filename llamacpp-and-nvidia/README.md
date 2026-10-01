@@ -17,11 +17,18 @@ GPU statistics are read directly from `nvml.dll`. Model, context, slot and
 speed data come from llama.cpp's HTTP endpoints (`/v1/models`, `/slots`,
 `/metrics`). The server never spawns a CLI or scrapes log files.
 
-For the loaded model, the panel shows three generation speed values on one line
+ For the loaded model, the panel shows three generation speed values on one line
 in `current max average` order. `current` is derived from the llama.cpp
 `tokens_predicted_total` counter between polls and is shown as `—` when the
 model is idle or the value is stale. Maximum and average are measured since the
 telemetry server started.
+
+## Local use
+
+Start OpenCode from this directory. The local `.opencode/tui.json` and
+`opencode.json` load the sidebar panel and the `gpu_stats` tool automatically.
+The telemetry server is still required and is started with the root
+`start-llamacpp.cmd`.
 
 ## Running on Windows
 
