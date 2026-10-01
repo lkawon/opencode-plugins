@@ -47,7 +47,7 @@ $LlamaNgl     = Get-Env "LLAMA_NGL" "64"
 $LlamaNp      = Get-Env "LLAMA_NP" "1"
 $LlamaHost    = Get-Env "LLAMA_HOST" "127.0.0.1"
 $LlamaPort    = Get-Env "LLAMA_PORT" "8080"
-$LlamaExtra   = Get-Env "LLAMA_EXTRA_ARGS" "--no-reasoning-preserve --flash-attn on --spec-type draft-mtp --spec-draft-n-max 4 --cache-type-k q8_0 --cache-type-v q8_0"
+$LlamaExtra   = Get-Env "LLAMA_EXTRA_ARGS" "--no-reasoning-preserve --flash-attn on --spec-type draft-mtp --spec-draft-n-max 4 --cache-type-k q8_0 --cache-type-v q8_0 --threads 8 --threads-batch 8"
 $LlamaUrl     = "http://127.0.0.1:$LlamaPort"
 
 $StatsUrl = (Get-Env "GPU_STATS_URL" "http://127.0.0.1:8765").TrimEnd("/")
