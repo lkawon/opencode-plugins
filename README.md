@@ -87,7 +87,7 @@ variables before running it:
 $env:LLAMA_GGUF  = "e:\path\to\model.gguf"
 $env:LLAMA_MMPROJ = "e:\path\to\mmproj.gguf"
 $env:LLAMA_ALIAS = "qwen3.8-27b"
-$env:LLAMA_CTX   = "152576"
+$env:LLAMA_CTX   = "116736"
 $env:LLAMA_NGL   = "64"
 .\start-llamacpp.ps1
 ```

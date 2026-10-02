@@ -51,7 +51,7 @@ function Get-Env {
 $LlamaGguf    = Get-Env "LLAMA_GGUF" "e:\LM Studio models\lmstudio-community\Qwen3.8-27B-GGUF\Qwen3.8-27B-Q4_K_M.gguf"
 $LlamaMmproj  = Get-Env "LLAMA_MMPROJ" "e:\LM Studio models\lmstudio-community\Qwen3.8-27B-GGUF\mmproj-Qwen3.8-27B-BF16.gguf"
 $LlamaAlias   = Get-Env "LLAMA_ALIAS" "qwen3.8-27b"
-$LlamaCtx     = Get-Env "LLAMA_CTX" "152576"
+$LlamaCtx     = Get-Env "LLAMA_CTX" "116736"
 $LlamaNgl     = Get-Env "LLAMA_NGL" "64"
 $LlamaNp      = Get-Env "LLAMA_NP" "1"
 $LlamaHost    = Get-Env "LLAMA_HOST" "0.0.0.0"
