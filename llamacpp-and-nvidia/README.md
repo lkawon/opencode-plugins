@@ -44,10 +44,14 @@ not create additional servers on port `8765`.
 The server uses these defaults:
 
 ```text
-GPU_STATS_HOST=127.0.0.1
+GPU_STATS_HOST=0.0.0.0
 GPU_STATS_PORT=8765
 LLAMA_SERVER_URL=http://127.0.0.1:8080
 ```
+
+The boot script creates an inbound Windows firewall rule for TCP port `8765` so
+the telemetry server is reachable from the LAN. Set `GPU_STATS_HOST=127.0.0.1`
+before starting telemetry if you want localhost-only access.
 
 A bearer token is generated once and persisted to
 `%USERPROFILE%\.config\opencode\llamacpp-stats.token` unless `GPU_STATS_TOKEN`
@@ -93,8 +97,7 @@ export GPU_STATS_URL="http://GPU_COMPUTER_IP:8765"
 export GPU_STATS_TOKEN="<token>"
 ```
 
-Only expose port `8765` on a trusted LAN (set `GPU_STATS_HOST=0.0.0.0` on the
-GPU machine to accept remote connections). Restart OpenCode after changing the
+Only expose port `8765` on a trusted LAN. Restart OpenCode after changing the
 configuration.
 
 ## Global plugin installation

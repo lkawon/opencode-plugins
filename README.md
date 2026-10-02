@@ -25,9 +25,10 @@ service that pulls data from llama.cpp's first-class endpoints — no `lms` CLI:
 - Prompt progress and generation speed from the llama-server stderr log.
 - Tokens/s (max / average) sampled from llama.cpp `GET /metrics`.
 
-The telemetry server binds `127.0.0.1` by default and always requires a bearer
-token (fail closed). A token is generated once and persisted to
-`~/.config/opencode/llamacpp-stats.token` unless `GPU_STATS_TOKEN` is set.
+The telemetry server binds `0.0.0.0` by default so it is reachable from the
+LAN, and always requires a bearer token (fail closed). A token is generated
+once and persisted to `~/.config/opencode/llamacpp-stats.token` unless
+`GPU_STATS_TOKEN` is set. Set `GPU_STATS_HOST=127.0.0.1` to keep it local-only.
 
 ## Remote macOS installation
 
@@ -49,9 +50,9 @@ export GPU_STATS_TOKEN="<token>"
 opencode
 ```
 
-Allow inbound TCP port `8765` (telemetry) through the Windows firewall only on
-a trusted LAN. The `openai-status` panel uses the OpenAI OAuth login stored
-locally by OpenCode on the Mac.
+The boot script creates an inbound Windows firewall rule for TCP port `8765`
+(telemetry). Only use this on a trusted LAN. The `openai-status` panel uses the
+OpenAI OAuth login stored locally by OpenCode on the Mac.
 
 After installing both plugins globally, start the Windows telemetry server
 from the repository root:
@@ -84,6 +85,7 @@ variables before running it:
 
 ```powershell
 $env:LLAMA_GGUF  = "e:\path\to\model.gguf"
+$env:LLAMA_MMPROJ = "e:\path\to\mmproj.gguf"
 $env:LLAMA_ALIAS = "qwen3.8-27b"
 $env:LLAMA_CTX   = "152576"
 $env:LLAMA_NGL   = "64"

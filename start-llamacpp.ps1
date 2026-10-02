@@ -15,7 +15,7 @@
 # scrapes logs.
 #
 # Environment overrides:
-#   LLAMA_GGUF, LLAMA_ALIAS, LLAMA_CTX, LLAMA_NGL, LLAMA_NP,
+#   LLAMA_GGUF, LLAMA_MMPROJ, LLAMA_ALIAS, LLAMA_CTX, LLAMA_NGL, LLAMA_NP,
 #   LLAMA_HOST, LLAMA_PORT, LLAMA_EXTRA_ARGS,
 #   GPU_STATS_HOST, GPU_STATS_PORT, GPU_STATS_TOKEN, GPU_STATS_URL
 
@@ -43,17 +43,18 @@ function Write-Log {
 function Get-Env {
   param([string]$Name, [string]$Default)
   $value = [Environment]::GetEnvironmentVariable($Name)
-  if ($value) { return $value }
+  if ($null -ne $value) { return $value }
   return $Default
 }
 
 # --- Defaults match a typical llama.cpp server launch. ---
 $LlamaGguf    = Get-Env "LLAMA_GGUF" "e:\LM Studio models\lmstudio-community\Qwen3.8-27B-GGUF\Qwen3.8-27B-Q4_K_M.gguf"
+$LlamaMmproj  = Get-Env "LLAMA_MMPROJ" "e:\LM Studio models\lmstudio-community\Qwen3.8-27B-GGUF\mmproj-Qwen3.8-27B-BF16.gguf"
 $LlamaAlias   = Get-Env "LLAMA_ALIAS" "qwen3.8-27b"
 $LlamaCtx     = Get-Env "LLAMA_CTX" "152576"
 $LlamaNgl     = Get-Env "LLAMA_NGL" "64"
 $LlamaNp      = Get-Env "LLAMA_NP" "1"
-$LlamaHost    = Get-Env "LLAMA_HOST" "127.0.0.1"
+$LlamaHost    = Get-Env "LLAMA_HOST" "0.0.0.0"
 $LlamaPort    = Get-Env "LLAMA_PORT" "8080"
 $LlamaExtra   = Get-Env "LLAMA_EXTRA_ARGS" "--no-reasoning-preserve --flash-attn on --spec-type draft-mtp --spec-draft-n-max 4 --cache-type-k q8_0 --cache-type-v q8_0 --threads 8 --threads-batch 8"
 $LlamaUrl     = "http://127.0.0.1:$LlamaPort"
@@ -124,12 +125,31 @@ function Stop-ByPort {
   return $true
 }
 
+function Ensure-FirewallRule {
+  param([int]$Port, [string]$Name)
+  $existing = Get-NetFirewallRule -DisplayName $Name -ErrorAction SilentlyContinue
+  if ($existing) {
+    Write-Log "Firewall rule '$Name' already exists."
+    return
+  }
+  try {
+    New-NetFirewallRule -DisplayName $Name -Direction Inbound -Protocol TCP -LocalPort $Port -Action Allow -Profile Any | Out-Null
+    Write-Log "Created firewall rule '$Name' (inbound TCP $Port)."
+  } catch {
+    Write-Log "Could not create firewall rule (needs admin): $($_.Exception.Message)"
+    Write-Log "Run in an elevated shell: New-NetFirewallRule -DisplayName '$Name' -Direction Inbound -Protocol TCP -LocalPort $Port -Action Allow -Profile Any"
+  }
+}
+
 function Start-LlamaServer {
   $exe = Get-LlamaServerExe
   if (-not (Test-Path -LiteralPath $LlamaGguf -PathType Leaf)) {
     throw "Model file not found: $LlamaGguf (set LLAMA_GGUF to an existing GGUF file)"
   }
-  Write-Log "Starting llama-server: gguf=$LlamaGguf alias=$LlamaAlias ctx=$LlamaCtx ngl=$LlamaNgl"
+  if ($LlamaMmproj -and -not (Test-Path -LiteralPath $LlamaMmproj -PathType Leaf)) {
+    throw "MMProj file not found: $LlamaMmproj (set LLAMA_MMPROJ to an existing GGUF file, or set it to an empty string to disable mmproj)"
+  }
+  Write-Log "Starting llama-server: gguf=$LlamaGguf mmproj=$LlamaMmproj alias=$LlamaAlias ctx=$LlamaCtx ngl=$LlamaNgl"
   $argsList = @(
     "-m", ('"{0}"' -f $LlamaGguf),
     "--alias", ('"{0}"' -f $LlamaAlias),
@@ -141,6 +161,7 @@ function Start-LlamaServer {
     "--host", $LlamaHost,
     "--port", $LlamaPort
   )
+  if ($LlamaMmproj) { $argsList += @("--mmproj", ('"{0}"' -f $LlamaMmproj)) }
   if ($LlamaExtra) { $argsList += $LlamaExtra.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries) }
   $stdout = Join-Path $LogDirectory "llama-server.stdout.log"
   $stderr = Join-Path $LogDirectory "llama-server.stderr.log"
@@ -176,10 +197,11 @@ function Start-Telemetry {
   if (-not $env:LLAMA_LOG_FILE) {
     $env:LLAMA_LOG_FILE = Join-Path $LogDirectory "llama-server.stderr.log"
   }
-  $out = Join-Path $LogDirectory "gpu-llamacpp-server.log"
+  $stdout = Join-Path $LogDirectory "gpu-llamacpp-server.stdout.log"
+  $stderr = Join-Path $LogDirectory "gpu-llamacpp-server.stderr.log"
   Write-Log "Starting telemetry: $($python.Source) $serverScript (port $StatsPort)"
-  $process = Start-Process -FilePath $python.Source -ArgumentList "`"$serverScript`"" -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $out -PassThru
-  Write-Log "Telemetry launched (pid $($process.Id)). Log: $out"
+  $process = Start-Process -FilePath $python.Source -ArgumentList "`"$serverScript`"" -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+  Write-Log "Telemetry launched (pid $($process.Id)). Logs: $stdout ; $stderr"
 }
 
 trap {
@@ -220,6 +242,7 @@ if ($doLlama) {
 }
 
 if ($doTelemetry) {
+  Ensure-FirewallRule -Port $StatsPort -Name "OpenCode llama.cpp telemetry"
   if (Test-TelemetryReady) {
     Write-Log "Telemetry already healthy (skipping start)."
   } else {

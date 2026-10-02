@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Read-only LAN telemetry endpoint for the computer running the NVIDIA GPU + llama.cpp server.
 
-Data sources (all HTTP, no CLI, no log scraping):
+Data sources:
   - NVML (nvml.dll)        -> GPU VRAM, utilization, temperature, power
   - llama.cpp /v1/models   -> model id, context length (n_ctx), quant, size, params
-  - llama.cpp /slots       -> per-slot processing state and prompt progress
+  - llama.cpp /slots       -> per-slot processing state
+  - llama-server stderr    -> prompt progress and generation speed (tg_3s)
   - llama.cpp /metrics     -> Prometheus counters sampled to derive tokens/s
 
-The server binds 127.0.0.1 by default and always requires a bearer token (fail
-closed). A token is generated once and persisted unless GPU_STATS_TOKEN is set.
+The server binds 0.0.0.0 by default so it is reachable from the LAN, and always
+requires a bearer token (fail closed). A token is generated once and persisted
+unless GPU_STATS_TOKEN is set. Set GPU_STATS_HOST=127.0.0.1 to keep it local.
 """
 import ctypes
 import hmac
@@ -22,7 +24,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.request import urlopen, Request
 
-HOST = os.environ.get("GPU_STATS_HOST", "127.0.0.1")
+HOST = os.environ.get("GPU_STATS_HOST", "0.0.0.0")
 PORT = int(os.environ.get("GPU_STATS_PORT", "8765"))
 LLAMA_URL = os.environ.get("LLAMA_SERVER_URL", "http://127.0.0.1:8080").rstrip("/")
 DEFAULT_LOG_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "logs"))
