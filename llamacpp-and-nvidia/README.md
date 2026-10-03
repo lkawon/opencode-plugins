@@ -11,7 +11,7 @@ computer with the NVIDIA GPU and llama.cpp.
 - Windows with Python 3 and an NVIDIA driver providing NVML
 - A running `llama-server` started with `--metrics --slots`
   (e.g. on `http://127.0.0.1:8080`)
-- OpenCode
+- OpenCode v2 or newer (this plugin uses the v2 plugin API)
 
 GPU statistics are read directly from `nvml.dll`. Model, context, slot and
 speed data come from llama.cpp's HTTP endpoints (`/v1/models`, `/slots`,
@@ -25,8 +25,9 @@ telemetry server started.
 
 ## Local use
 
-Start OpenCode from this directory. The local `.opencode/tui.json` and
-`opencode.json` load the sidebar panel and the `gpu_stats` tool automatically.
+Start OpenCode from this directory. The local `opencode.json` loads the
+`.opencode` plugin package, which registers the sidebar panel and the
+`gpu_stats` tool automatically.
 The telemetry server is still required and is started with the root
 `start-llamacpp.cmd -mode start -service telemetry`.
 

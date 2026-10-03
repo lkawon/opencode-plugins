@@ -6,7 +6,8 @@ and whether the limit has been reached.
 
 ## Requirements
 
-- OpenCode authenticated with OpenAI OAuth (`/connect`, then OpenAI)
+- OpenCode v2 or newer (this plugin uses the v2 plugin API),
+  authenticated with OpenAI OAuth (`/connect`, then OpenAI)
 - ChatGPT Plus, Team, or Pro
 
 The plugin reads OpenCode's OAuth credentials from
@@ -17,8 +18,9 @@ ChatGPT change may require a plugin update.
 
 ## Local use
 
-Start OpenCode from this directory. The local `.opencode/tui.json` loads the
-sidebar panel automatically.
+Start OpenCode from this directory. The local `opencode.json` loads the
+`.opencode` plugin package, which registers the sidebar panel and the
+`openai_status` tool automatically.
 
 ## Global installation
 
@@ -46,6 +48,16 @@ The plugin also exposes an `openai_status` tool for on-demand diagnostics.
 Quota data is fetched once when the TUI starts and then every 60 seconds.
 
 ## Token refresh
+
+OpenCode v2 stores credentials in its database. This migrated panel still reads
+the old compatibility file at `~/.local/share/opencode/auth.json`. After a fresh
+`opencode auth login openai`, regenerate that file with:
+
+```sh
+node export-opencode-v2-auth.mjs
+```
+
+Restart OpenCode after exporting so the panel picks up the token.
 
 If the status panel or tool reports `OpenAI OAuth token has expired`, refresh the
 access token without re-logging in:

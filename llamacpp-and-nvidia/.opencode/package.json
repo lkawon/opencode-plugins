@@ -1,7 +1,13 @@
 {
+  "name": "llamacpp-and-nvidia",
   "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./tui": "./tui.tsx"
+  },
   "dependencies": {
-    "@opencode-ai/plugin": "1.18.30",
+    "@opencode/plugin": "^2.0.21",
+    "@opentui/core": "^0.5.8",
     "@opentui/solid": "^0.5.8",
     "@types/node": "^22.0.0",
     "solid-js": "^1.9.0"
