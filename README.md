@@ -30,6 +30,12 @@ LAN, and always requires a bearer token (fail closed). A token is generated
 once and persisted to `~/.config/opencode/llamacpp-stats.token` unless
 `GPU_STATS_TOKEN` is set. Set `GPU_STATS_HOST=127.0.0.1` to keep it local-only.
 
+Set `GPU_STATS_DEBUG=1` to enable debug logging. On the Windows machine it
+records requests, sampler output and swallowed errors with timestamps to the
+telemetry stderr log (`logs\gpu-llamacpp-server.stderr.log`); on the Mac it
+logs each stats fetch (URL, token presence, status, failures) to the OpenCode
+console.
+
 ## Remote macOS installation
 
 The telemetry server runs on the Windows GPU computer. On the Mac, clone this
@@ -91,6 +97,17 @@ $env:LLAMA_CTX   = "124928"
 $env:LLAMA_NGL   = "64"
 .\start-llamacpp.ps1
 ```
+
+To turn on llama.cpp debug logging (verbosity `5`; default is `3` = info),
+set `LLAMA_VERBOSITY` and restart llama-server:
+
+```powershell
+$env:LLAMA_VERBOSITY = "5"
+.\start-llamacpp.ps1 -mode restart -service llama
+```
+
+Output goes to `logs\llama-server.stderr.log`. Valid levels: `0` generic,
+`1` error, `2` warning, `3` info, `4` trace, `5` debug.
 
 To run the boot automatically at logon, register a hidden scheduled task with:
 

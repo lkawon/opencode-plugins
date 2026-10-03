@@ -19,6 +19,7 @@ import os
 import re
 import secrets
 import stat
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -38,16 +39,24 @@ TOKEN_PATH = os.environ.get(
     "GPU_STATS_TOKEN_PATH",
     os.path.join(os.path.expanduser("~"), ".config", "opencode", "llamacpp-stats.token"),
 )
+DEBUG = os.environ.get("GPU_STATS_DEBUG", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _debug(message):
+    if DEBUG:
+        print(f"[debug] {time.strftime('%Y-%m-%d %H:%M:%S')} {message}", file=sys.stderr, flush=True)
 
 
 def _load_or_create_token():
     env_token = os.environ.get("GPU_STATS_TOKEN", "").strip()
     if env_token:
+        _debug("token: using GPU_STATS_TOKEN from environment")
         return env_token
     try:
         with open(TOKEN_PATH, "r", encoding="utf-8") as handle:
             stored = handle.read().strip()
             if stored:
+                _debug(f"token: loaded from {TOKEN_PATH}")
                 return stored
     except OSError:
         pass
@@ -59,6 +68,7 @@ def _load_or_create_token():
             handle.write(token + "\n")
     except OSError:
         pass
+    _debug(f"token: generated new token (path: {TOKEN_PATH})")
     return token
 
 
@@ -160,13 +170,21 @@ try:
 except Exception as error:
     NVML = None
     NVML_ERROR = str(error)
+    _debug(f"NVML unavailable: {error}")
 
 
 # --- llama.cpp HTTP helpers ---
 def _http(path, timeout=4):
+    start = time.monotonic()
     request = Request(f"{LLAMA_URL}{path}", headers={"Accept": "application/json"})
-    with urlopen(request, timeout=timeout) as response:
-        return response.read().decode("utf-8", "replace")
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            body = response.read().decode("utf-8", "replace")
+    except Exception as error:
+        _debug(f"HTTP GET {LLAMA_URL}{path} failed after {time.monotonic() - start:.2f}s: {error}")
+        raise
+    _debug(f"HTTP GET {LLAMA_URL}{path} ok in {time.monotonic() - start:.2f}s ({len(body)} bytes)")
+    return body
 
 
 def _get_json(path, timeout=4):
@@ -210,9 +228,10 @@ def _current_model_id():
             if mid:
                 MODEL_ID_CACHE["id"] = mid
                 MODEL_ID_CACHE["at"] = now
+                _debug(f"model lookup: {mid}")
                 return mid
-    except Exception:
-        pass
+    except Exception as error:
+        _debug(f"model lookup failed: {error}")
     return MODEL_ID_CACHE["id"]
 
 
@@ -274,6 +293,12 @@ def _log_sampler():
                     tg_3s = float(speed.group(3) or speed.group(2))
             model = _current_model_id()
             now = time.time()
+            if (
+                task != LLAMA_LOG_STATE["task"]
+                or prompt_progress != LLAMA_LOG_STATE["prompt_progress"]
+                or tg_3s != LLAMA_LOG_STATE["tg_3s"]
+            ):
+                _debug(f"log sample: model={model or '-'} task={task} progress={prompt_progress} tg_3s={tg_3s}")
             with STATE_LOCK:
                 LLAMA_LOG_STATE.update({
                     "task": task,
@@ -283,8 +308,8 @@ def _log_sampler():
                 })
                 if model and tg_3s is not None and tg_3s > 0:
                     _record_performance(model, tg_3s)
-        except Exception:
-            pass
+        except Exception as error:
+            _debug(f"log sampler error: {error}")
         time.sleep(SAMPLE_INTERVAL)
 
 
@@ -301,19 +326,22 @@ def _metrics_sampler():
             now = time.time()
             model = _current_model_id()
             if model and gauge is not None and gauge > 0:
+                _debug(f"metrics: model={model} speed={gauge:.1f} t/s (gauge)")
                 with STATE_LOCK:
                     _record_performance(model, gauge)
             elif model and last_total is not None and total is not None and total > last_total and last_time:
                 delta_time = now - last_time
                 if delta_time > 0:
+                    speed = (total - last_total) / delta_time
+                    _debug(f"metrics: model={model} speed={speed:.1f} t/s (delta {total - last_total} tokens / {delta_time:.2f}s)")
                     with STATE_LOCK:
-                        _record_performance(model, (total - last_total) / delta_time)
+                        _record_performance(model, speed)
             if total is not None:
                 last_total = total
                 last_time = now
             LAST_METRICS_AT = now
-        except Exception:
-            pass
+        except Exception as error:
+            _debug(f"metrics sampler error: {error}")
         time.sleep(SAMPLE_INTERVAL)
 
 
@@ -330,6 +358,7 @@ def _llamacpp_payload():
     try:
         entries = _model_entries()
     except Exception as error:
+        _debug(f"/v1/models failed: {error}")
         return {"available": False, "error": str(error)}
 
     models = []
@@ -363,9 +392,9 @@ def _llamacpp_payload():
                     "n_prompt_tokens_processed": n_processed,
                     "n_prompt_tokens_cache": slot.get("n_prompt_tokens_cache"),
                     "next_token": slot.get("next_token") if isinstance(slot.get("next_token"), list) else [],
-                })
-    except Exception:
-        pass
+                    })
+    except Exception as error:
+        _debug(f"/slots failed: {error}")
 
     model_id = _current_model_id()
     with STATE_LOCK:
@@ -392,7 +421,9 @@ def _authorized(handler):
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        _debug(f"request {self.path} from {self.client_address[0]}")
         if not _authorized(self):
+            _debug("unauthorized: missing or invalid bearer token")
             self.send_error(401, "Unauthorized")
             return
         if self.path in ("/", "/health"):
@@ -408,6 +439,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+        _debug(f"responded {self.path}: {len(body)} bytes")
 
     def log_message(self, *_):
         pass
@@ -428,6 +460,11 @@ def main():
 
     threading.Thread(target=_metrics_sampler, daemon=True).start()
     threading.Thread(target=_log_sampler, daemon=True).start()
+    _debug(
+        f"config: host={HOST} port={PORT} llama_url={LLAMA_URL} "
+        f"log_file={LLAMA_LOG_FILE} interval={SAMPLE_INTERVAL}s "
+        f"nvml={'available' if NVML else 'unavailable (' + NVML_ERROR + ')'}"
+    )
     print(f"llama.cpp/NVIDIA stats listening on {HOST}:{PORT} (llama server: {LLAMA_URL})", flush=True)
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 
