@@ -43,6 +43,12 @@ export default Plugin.define({
 })
 
 function Panel(props: { stats: Stats; online: boolean; lastError: string }) {
+  if (!props.online) {
+    return <box flexDirection="column">
+      <text>Telemetry server offline</text>
+    </box>
+  }
+
   return <box flexDirection="column">
     <GpuSection gpus={props.stats.gpu?.gpus ?? []} />
     <text> </text>
