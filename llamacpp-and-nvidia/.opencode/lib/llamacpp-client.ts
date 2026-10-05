@@ -69,11 +69,27 @@ export function token(): string {
   }
 }
 
+function debug(message: string): void {
+  const flag = (process.env.GPU_STATS_DEBUG ?? "").trim().toLowerCase()
+  if (flag === "1" || flag === "true" || flag === "yes" || flag === "on") {
+    console.error(`[debug] ${message}`)
+  }
+}
+
 export async function fetchStats(): Promise<Stats> {
-  const response = await fetch(`${endpoint()}/stats`, {
-    headers: { Accept: "application/json", Authorization: `Bearer ${token()}` },
-    signal: AbortSignal.timeout(5_000),
-  })
+  const url = `${endpoint()}/stats`
+  debug(`GET ${url} (token ${token() ? "present" : "missing"})`)
+  let response: Response
+  try {
+    response = await fetch(url, {
+      headers: { Accept: "application/json", Authorization: `Bearer ${token()}` },
+      signal: AbortSignal.timeout(5_000),
+    })
+  } catch (error) {
+    debug(`fetch failed: ${error instanceof Error ? error.message : String(error)}`)
+    throw error
+  }
+  debug(`status ${response.status}`)
   if (!response.ok) throw new Error(`GPU stats server HTTP ${response.status}`)
   return (await response.json()) as Stats
 }

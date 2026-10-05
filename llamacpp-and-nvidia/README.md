@@ -50,6 +50,11 @@ GPU_STATS_PORT=8765
 LLAMA_SERVER_URL=http://127.0.0.1:8080
 ```
 
+The telemetry server is reachable from the LAN by default. If Windows Firewall
+blocks TCP port `8765`, open it manually only on a trusted private network. Set
+`GPU_STATS_HOST=127.0.0.1` before starting telemetry if you want localhost-only
+access.
+
 A bearer token is generated once and persisted to
 `%USERPROFILE%\.config\opencode\llamacpp-stats.token` unless `GPU_STATS_TOKEN`
 is set. You can override the endpoint before starting OpenCode:
