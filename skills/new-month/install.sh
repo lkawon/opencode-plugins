@@ -17,7 +17,7 @@ trap 'rm -rf "$TEMP"' EXIT INT TERM
 mkdir "$TEMP"
 
 for file in \
-  .gitignore README.md SKILL.md auth.mjs install.sh new-month.mjs \
+  .gitignore README.md SKILL.md auth.mjs install.sh login-oauth.mjs new-month.mjs \
   package.json package-lock.json repair-c.mjs run.sh verify-formulas.mjs
 do
   cp "$SCRIPT_DIR/$file" "$TEMP/$file"
