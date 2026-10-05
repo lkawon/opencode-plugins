@@ -14,6 +14,7 @@ weekend formatting. The skill is used by OpenCode: ask the agent
 | `SKILL.md`             | Skill definition consumed by OpenCode (procedure, checks).     |
 | `new-month.mjs`        | Main script: duplicate, resize, dates, formulas, formatting.   |
 | `auth.mjs`             | Shared Google Sheets API client + OAuth credential loading.    |
+| `login-oauth.mjs`      | Local OAuth helper for creating `mcp-auth.json` tokens when MCP auth is unavailable. |
 | `repair-c.mjs`         | Rewrites column C formulas of an existing month tab.           |
 | `verify-formulas.mjs`  | Prints formulas of a range via the Sheets API.                 |
 | `install.sh`           | Links the skill into `~/.config/opencode/skills/` and installs deps. |
@@ -31,9 +32,9 @@ weekend formatting. The skill is used by OpenCode: ask the agent
    `mcp-auth.json`, or in `GOOGLE_OAUTH_*` environment variables.
 
 OAuth client secrets, access tokens and refresh tokens are intentionally not
-stored in this repository. The target computer must already have a working
-`google-drive` MCP authentication or receive these files through a secure
-channel.
+stored in this repository. The target computer must have OAuth client
+credentials and a token created either by `google-drive` MCP authentication or
+by the local `run.sh login` helper described below.
 
 ## Install
 
@@ -62,10 +63,42 @@ repository, run `sh ./install.sh` again to install the new version.
    ```
 
 2. Restrict access to the file: `chmod 600 ~/.config/opencode/google-credentials.json`.
-3. Authenticate the `google-drive` MCP once in OpenCode. Tokens are stored
-   in `~/.local/share/opencode/mcp-auth.json` under `google-drive.tokens`.
+3. Authenticate one of these ways:
+   - preferred when configured: authenticate the `google-drive` MCP once in
+     OpenCode. Tokens are stored in `~/.local/share/opencode/mcp-auth.json`
+     under `google-drive.tokens`.
+   - if `/mcps` is empty or no `google-drive` MCP is configured, use the local
+     helper:
+
+     ```sh
+     ~/.config/opencode/skills/new-month/run.sh login
+     ```
+
+     It opens a Google login in the browser and writes the same token shape to
+     `~/.local/share/opencode/mcp-auth.json`.
 4. The scripts combine the client credentials with those access/refresh
    tokens. A normal access-token expiry is handled automatically.
+
+#### Local OAuth helper and redirect URI
+
+`run.sh login` defaults to this redirect URI, matching the local OpenCode MCP
+Google Drive setup used on this machine:
+
+```text
+http://127.0.0.1:19876/callback
+```
+
+For an OAuth client of type **Web application**, add that value in Google Cloud
+Console under **Authorized redirect URIs**. If the console already contains a
+different localhost callback, pass it explicitly:
+
+```sh
+~/.config/opencode/skills/new-month/run.sh login --port 19876 --callback /mcp/oauth/callback
+```
+
+If Google shows `Błąd 400: redirect_uri_mismatch`, add the exact `Redirect URI:`
+printed by the helper to the OAuth client and run the helper again. For a
+**Desktop app** OAuth client this redirect allow-list is normally not needed.
 
 ## Usage
 
@@ -83,6 +116,7 @@ Manually (from any directory after installation):
 ~/.config/opencode/skills/new-month/run.sh 12.2026 --source 10.2026
 
 # helpers
+~/.config/opencode/skills/new-month/run.sh login
 ~/.config/opencode/skills/new-month/run.sh verify 11.2026!C5:C6
 ~/.config/opencode/skills/new-month/run.sh repair 10.2026 31
 ```
@@ -120,7 +154,11 @@ Per month tab (`MM.YYYY`):
 ## Troubleshooting
 
 - `No Google OAuth credentials found` / token errors — complete the
-  authentication step above, or export the `GOOGLE_OAUTH_*` variables.
+  authentication step above, run `run.sh login`, or export the
+  `GOOGLE_OAUTH_*` variables.
+- `redirect_uri_mismatch` in the browser during `run.sh login` — add the exact
+  `Redirect URI:` printed by the helper to the OAuth client's Authorized
+  redirect URIs in Google Cloud Console, then retry.
 - `403 Forbidden` from the Sheets API — the OAuth account lacks editor
   access to the spreadsheet; share it.
 - `Target sheet MM.YYYY already exists` — the tab exists; delete it in

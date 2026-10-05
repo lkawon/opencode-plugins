@@ -60,6 +60,7 @@ Nie nadpisuj istniejącej karty i nie usuwaj karty źródłowej.
 
 ## Narzędzia pomocnicze (ten katalog)
 
+- `run.sh login` — uruchamia lokalne logowanie Google OAuth i zapisuje tokeny w `~/.local/share/opencode/mcp-auth.json` jako `google-drive.tokens`.
 - `run.sh verify MM.YYYY!C5:C8` — czyta formuły przez Sheets API (`valueRenderOption: FORMULA`).
 - `run.sh repair MM.YYYY dni` — przepisuje kolumnę C danej karty na poprawne formuły narastające.
 
@@ -69,4 +70,14 @@ Skrypt czyta dane klienta OAuth z `~/.config/opencode/google-credentials.json`
 oraz tokeny z `~/.local/share/opencode/mcp-auth.json` (`google-drive.tokens`),
 albo zmiennych środowiskowych `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`,
 `GOOGLE_OAUTH_ACCESS_TOKEN` (opcjonalnie `GOOGLE_OAUTH_REFRESH_TOKEN`, `GOOGLE_OAUTH_EXPIRY_DATE`).
-Przy błędzie tokenu ponownie uwierzytelnij MCP `google-drive` w OpenCode.
+Przy błędzie tokenu ponownie uwierzytelnij MCP `google-drive` w OpenCode albo uruchom:
+
+```bash
+"$HOME/.config/opencode/skills/new-month/run.sh" login
+```
+
+Jeśli `/mcps` jest puste, użyj `run.sh login`. Domyślny redirect URI helpera to
+`http://127.0.0.1:19876/callback`; dla klienta OAuth typu Web application musi
+być wpisany w Google Cloud Console jako Authorized redirect URI. Przy błędzie
+`redirect_uri_mismatch` dodaj dokładny `Redirect URI:` wypisany przez helper i
+uruchom logowanie ponownie.

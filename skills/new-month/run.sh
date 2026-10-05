@@ -36,6 +36,10 @@ case "${1:-}" in
     shift
     SCRIPT="repair-c.mjs"
     ;;
+  login)
+    shift
+    SCRIPT="login-oauth.mjs"
+    ;;
   *)
     SCRIPT="new-month.mjs"
     ;;
