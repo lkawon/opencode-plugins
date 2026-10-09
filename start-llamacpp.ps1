@@ -160,7 +160,7 @@ function Start-LlamaServer {
 
 function Wait-ServerReady {
   param([System.Diagnostics.Process]$Process)
-  $deadline = (Get-Date).AddSeconds(180)
+  $deadline = (Get-Date).AddSeconds(600)
   while ((Get-Date) -lt $deadline) {
     $Process.Refresh()
     if ($Process.HasExited) {
@@ -222,7 +222,7 @@ if ($doLlama) {
   } else {
     $serverProcess = Start-LlamaServer
     if (-not (Wait-ServerReady -Process $serverProcess)) {
-      throw "llama-server did not become ready on $LlamaUrl within 180s"
+      throw "llama-server did not become ready on $LlamaUrl within 600s"
     }
     Write-Log "llama-server is ready on $LlamaUrl."
   }
